@@ -1,0 +1,30 @@
+# Environment / secrets
+backend/.env
+.env
+
+# Go build artifacts
+backend/msf-server
+backend/*.exe
+
+# Node / React
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Scan artifacts
+/tmp/msf-scans/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

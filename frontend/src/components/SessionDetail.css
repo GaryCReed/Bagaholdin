@@ -1,0 +1,1168 @@
+.session-detail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+}
+
+/* ── Header ── */
+.sd-header {
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.sd-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.sd-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-ifaces {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.header-iface-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #858585;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.header-iface-name {
+  color: #4fc1ff;
+  font-weight: 600;
+}
+
+.sd-back {
+  font-size: 12px;
+  color: #858585;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.sd-back:hover {
+  color: #d4d4d4;
+}
+
+.sd-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sd-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #d4d4d4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-host {
+  font-size: 12px;
+  color: #858585;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+}
+
+.sd-loading {
+  font-size: 12px;
+  color: #585858;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.running {
+  background-color: #98c379;
+  box-shadow: 0 0 6px rgba(152, 195, 121, 0.7);
+}
+
+.status-dot.idle {
+  background-color: #4a4a4a;
+}
+
+.logout-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  background-color: #a6263d;
+  border: none;
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.logout-btn:hover {
+  background-color: #c5263d;
+}
+
+/* ── Body layout ── */
+.sd-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Action sidebar ── */
+.sd-sidebar {
+  width: 220px;
+  background-color: #252526;
+  border-right: 1px solid #3e3e42;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 16px 12px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.sd-sidebar h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #858585;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 0 4px;
+}
+
+.action-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-item {
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #c5c5c5;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.action-item:hover {
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+}
+
+.action-item.active {
+  background-color: #0e639c22;
+  border-left-color: #0e639c;
+  color: #4fc1ff;
+}
+
+/* ── Main area ── */
+.sd-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+  gap: 12px;
+}
+
+.sd-console-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sd-no-session {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #585858;
+  font-size: 14px;
+}
+
+/* ── Shared action panel (vuln scan + CVE analysis) ── */
+.action-panel {
+  flex: 1 1 0;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.action-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  flex-shrink: 0;
+}
+
+.action-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.action-panel-target {
+  font-weight: 400;
+  color: #858585;
+  font-family: 'Courier New', monospace;
+}
+
+.btn-run-scan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  background-color: #2a4a2a;
+  color: #98c379;
+  border: 1px solid #3a6a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-run-scan:hover:not(:disabled) {
+  background-color: #3a6a3a;
+}
+
+.btn-run-scan:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #98c37944;
+  border-top-color: #98c379;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Vuln scan raw output */
+.action-panel-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.action-panel-output::-webkit-scrollbar,
+.cve-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.action-panel-output::-webkit-scrollbar-track,
+.cve-body::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.action-panel-output::-webkit-scrollbar-thumb,
+.cve-body::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.output-hint {
+  color: #585858;
+  font-style: italic;
+}
+
+.output-error {
+  color: #e06c75;
+}
+
+/* ── CVE analysis body ── */
+.cve-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cve-no-results {
+  color: #98c379;
+  font-weight: 600;
+}
+
+.cve-error {
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.cve-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cve-item {
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cve-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background-color: #252526;
+  flex-wrap: wrap;
+}
+
+.cve-id-text {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  color: #e5c07b;
+}
+
+/* Severity badge */
+.cve-severity {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  border-radius: 3px;
+  padding: 2px 7px;
+}
+
+.cve-severity-critical { background-color: #4a1a1a; color: #e06c75; border: 1px solid #7a2a2a; }
+.cve-severity-high     { background-color: #3a2a1a; color: #d19a66; border: 1px solid #6a4a2a; }
+.cve-severity-medium   { background-color: #3a3010; color: #e5c07b; border: 1px solid #6a5a20; }
+.cve-severity-low      { background-color: #1a3a3a; color: #56b6c2; border: 1px solid #2a6a6a; }
+.cve-severity-none     { background-color: #2a2a2a; color: #858585; border: 1px solid #4a4a4a; }
+
+.cve-cvss-ver {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.cve-metrics-loading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #585858;
+}
+
+.cve-module-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: #98c379;
+  background-color: #2a4a2a;
+  border: 1px solid #3a6a3a;
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.cve-module-count.cve-no-module {
+  color: #585858;
+  background-color: transparent;
+  border-color: #3e3e42;
+}
+
+/* ── Enumeration panel ── */
+.enum-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+/* OS filter context bar */
+.enum-os-context {
+  padding: 6px 14px 8px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.enum-os-filter-active {
+  color: #858585;
+}
+
+.enum-os-filter-active strong {
+  color: #56b6c2;
+  font-weight: 600;
+}
+
+.enum-os-approx {
+  color: #585858;
+  font-style: italic;
+}
+
+.enum-os-filter-none {
+  color: #585858;
+  font-style: italic;
+}
+
+.enum-service {
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  padding: 6px 14px;
+}
+
+.enum-service-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+  padding: 6px 2px;
+}
+
+.enum-service-clickable {
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.12s;
+}
+
+.enum-service-clickable:hover {
+  background-color: #2a2a2a;
+}
+
+.enum-expand-icon {
+  font-size: 9px;
+  color: #585858;
+  flex-shrink: 0;
+  width: 12px;
+  transition: color 0.12s;
+}
+
+.enum-service-clickable:hover .enum-expand-icon {
+  color: #d4d4d4;
+}
+
+.enum-expand-hidden {
+  visibility: hidden;
+}
+
+.enum-port {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  background: #2d2d30;
+  padding: 2px 7px;
+  border-radius: 3px;
+  color: #9cdcfe;
+  border: 1px solid #3e3e42;
+  white-space: nowrap;
+}
+
+.enum-service-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.enum-version {
+  font-size: 11px;
+  color: #777;
+  font-style: italic;
+}
+
+/* Per-CVE affected hosts */
+.cve-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 10px 6px;
+}
+
+.cve-target-tag {
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+  background: #1a2a1a;
+  color: #98c379;
+  border: 1px solid #2a4a2a;
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+
+/* NVD summary block */
+.cve-summary {
+  padding: 8px 10px;
+  background-color: #222222;
+  border-top: 1px solid #2d2d2d;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cve-description {
+  margin: 0;
+  font-size: 11px;
+  color: #b0b0b0;
+  line-height: 1.5;
+}
+
+.cve-vector {
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+  color: #585858;
+  word-break: break-all;
+}
+
+.module-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.module-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-top: 1px solid #2d2d2d;
+  gap: 10px;
+}
+
+.module-item:hover {
+  background-color: #2a2a2a;
+}
+
+.module-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.module-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.module-name {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #4fc1ff;
+  word-break: break-all;
+}
+
+/* Per-module OS platform pills */
+.enum-mod-os-pill {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.enum-mod-os-windows {
+  background: #1e2a1e;
+  color: #6aaf6a;
+  border: 1px solid #2a4a2a;
+}
+
+.enum-mod-os-linux {
+  background: #1e2a3a;
+  color: #56b6c2;
+  border: 1px solid #2a4a5a;
+}
+
+.enum-mod-os-multi {
+  background: #2a2a1e;
+  color: #e5c07b;
+  border: 1px solid #4a4a2a;
+}
+
+.enum-mod-os-scanner {
+  background: #2a1e2a;
+  color: #c678dd;
+  border: 1px solid #4a2a4a;
+}
+
+.btn-copy-module,
+.btn-run-module {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 10px;
+  background-color: transparent;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-copy-module {
+  color: #858585;
+}
+
+.btn-copy-module:hover {
+  color: #d4d4d4;
+  border-color: #858585;
+}
+
+.btn-copy-module:active {
+  color: #98c379;
+  border-color: #98c379;
+}
+
+.btn-run-module {
+  color: #5a9a5a;
+  border-color: #3a5a3a;
+}
+
+.btn-run-module:hover {
+  color: #98c379;
+  border-color: #6a9a6a;
+  background-color: #1a2a1a;
+}
+
+.btn-run-module:active {
+  color: #c3e6a0;
+  border-color: #98c379;
+}
+
+/* ── GitHub exploit repos section ── */
+/* ── Shells panel ── */
+.msf-sessions-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.msf-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.msf-session-card {
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.msf-session-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.msf-session-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.msf-session-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.badge-meterpreter {
+  background: #1a2a3a;
+  color: #4fc1ff;
+  border: 1px solid #2a4a6a;
+}
+
+.badge-shell {
+  background: #2a3a1a;
+  color: #98c379;
+  border: 1px solid #3a6a2a;
+}
+
+.msf-session-arch {
+  font-size: 11px;
+  color: #858585;
+  font-family: 'Courier New', monospace;
+}
+
+.msf-session-info {
+  font-size: 12px;
+  color: #e5c07b;
+  font-family: 'Courier New', monospace;
+}
+
+.msf-session-conn {
+  font-size: 11px;
+  color: #585858;
+  font-family: 'Courier New', monospace;
+}
+
+.msf-session-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.btn-interact-meterpreter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11px;
+  background-color: #2a1a3a;
+  color: #c678dd;
+  border: 1px solid #6a3a8a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-interact-meterpreter:hover {
+  background-color: #3a2a4a;
+}
+
+.shells-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-background-session {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11px;
+  background-color: #2a2a1a;
+  color: #e5c07b;
+  border: 1px solid #5a5a2a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-background-session:hover {
+  background-color: #3a3a1a;
+}
+
+.btn-upgrade-session {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11px;
+  background-color: #2a1a3a;
+  color: #c678dd;
+  border: 1px solid #4a2a6a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-upgrade-session:hover {
+  background-color: #3a2a4a;
+}
+
+.btn-upgrade-session:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-kill-session {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11px;
+  background-color: #2a1010;
+  color: #e06c75;
+  border: 1px solid #5a2a2a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-kill-session:hover {
+  background-color: #3a1a1a;
+}
+
+/* ── GitHub exploit repos section ── */
+.github-section {
+  border-top: 1px solid #2d2d2d;
+  padding: 8px 10px;
+  background-color: #1a1e2a;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.github-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.github-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #858585;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.github-repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.github-repo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 8px;
+  background-color: #1e2233;
+  border: 1px solid #2a3050;
+  border-radius: 3px;
+}
+
+.github-repo-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.github-repo-name {
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  color: #4fc1ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.github-repo-name:hover {
+  text-decoration: underline;
+}
+
+.github-repo-stars {
+  font-size: 11px;
+  color: #e5c07b;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.github-repo-desc {
+  margin: 0;
+  font-size: 11px;
+  color: #a0a0a0;
+  line-height: 1.5;
+}
+
+.github-repo-updated {
+  font-size: 10px;
+  color: #585858;
+  font-style: italic;
+}
+
+.github-error {
+  font-size: 11px;
+  color: #e06c75;
+  margin: 0;
+}
+
+.github-no-results {
+  font-size: 11px;
+  color: #585858;
+  font-style: italic;
+  margin: 0;
+}
+
+/* ── Post Exploitation panel ── */
+
+.post-ex-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
+
+/* Context bar */
+.post-ex-context {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.post-ex-context-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.post-ex-context-label {
+  font-size: 11px;
+  color: #858585;
+  font-family: 'Arial', sans-serif;
+  white-space: nowrap;
+}
+
+.post-ex-no-session {
+  font-size: 11px;
+  color: #585858;
+  font-style: italic;
+}
+
+.post-ex-session-info {
+  font-size: 11px;
+  color: #a0a0a0;
+  font-family: 'Courier New', monospace;
+}
+
+/* Section titles */
+.post-ex-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #5a5a5a;
+  padding: 10px 0 6px;
+  border-bottom: 1px solid #2a2a2a;
+  margin-bottom: 8px;
+}
+
+/* ── Quick command buttons ── */
+.post-ex-quick-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.post-ex-quick-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.post-ex-quick-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #858585;
+  min-width: 110px;
+  flex-shrink: 0;
+  font-family: 'Arial', sans-serif;
+  padding-top: 3px;
+}
+
+.post-ex-type-pill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.pill-meterpreter {
+  background: #2d1f4a;
+  color: #c678dd;
+  border: 1px solid #4a2a6a;
+}
+
+.pill-shell {
+  background: #1a2a1a;
+  color: #98c379;
+  border: 1px solid #2a4a2a;
+}
+
+.post-ex-os-pill {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: #1a2a3a;
+  color: #56b6c2;
+  border: 1px solid #2a4a5a;
+}
+
+.post-ex-quick-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.btn-post-quick {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  color: #cccccc;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.btn-post-quick:hover:not(:disabled) {
+  background: #2d2d30;
+  border-color: #5a5a5a;
+  color: #e0e0e0;
+}
+
+.btn-post-quick:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Recommended modules ── */
+.post-ex-modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.post-ex-module-category {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.post-ex-module-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 4px 8px;
+  border-left: 3px solid #555;
+  margin-bottom: 2px;
+}
+
+.post-ex-module-cat-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.post-ex-module-item {
+  padding: 7px 10px;
+  background: #1e2028;
+  border: 1px solid #2a2d3a;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.post-ex-module-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.post-ex-module-name {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #9cdcfe;
+  word-break: break-all;
+}
+
+.post-ex-module-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.post-ex-module-desc {
+  margin: 0;
+  font-size: 11px;
+  color: #858585;
+  line-height: 1.5;
+}
+
+/* ── Output ── */
+.post-ex-output {
+  border-top: 1px solid #2a2a2a;
+  margin-top: 8px;
+  padding-top: 4px;
+}

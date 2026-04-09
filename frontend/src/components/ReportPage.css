@@ -1,0 +1,542 @@
+/* ── Screen: wrapper + toolbar ── */
+
+.rp-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: #ccc;
+  font-family: sans-serif;
+}
+
+.rp-wrapper {
+  min-height: 100vh;
+  background: #2d2d2d;
+}
+
+.rp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #3e3e42;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.rp-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.rp-toolbar-title {
+  font-family: sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.rp-toolbar-hint {
+  font-family: sans-serif;
+  font-size: 12px;
+  color: #777;
+}
+
+.rp-btn-print {
+  padding: 7px 18px;
+  background: #0e639c;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: sans-serif;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.rp-btn-print:hover {
+  background: #1177bb;
+}
+
+/* ── Report document (white card) ── */
+
+.rp-document {
+  max-width: 900px;
+  margin: 32px auto;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  padding: 60px 72px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ── Cover page ── */
+
+.rp-cover {
+  text-align: center;
+  padding: 60px 0 80px;
+  border-bottom: 3px solid #111;
+  margin-bottom: 48px;
+  page-break-after: always;
+}
+
+.rp-cover-label {
+  font-family: 'Arial', sans-serif;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #c62828;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.rp-cover-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #111;
+  margin: 0 0 48px;
+  font-family: 'Georgia', serif;
+}
+
+.rp-cover-table {
+  margin: 0 auto;
+  border-collapse: collapse;
+  width: 420px;
+  font-family: 'Arial', sans-serif;
+  font-size: 13px;
+}
+
+.rp-cover-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+}
+
+.rp-cover-table td:first-child {
+  color: #555;
+  width: 40%;
+  font-weight: 600;
+}
+
+.rp-risk-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-family: 'Arial', sans-serif;
+}
+
+/* ── Sections ── */
+
+.rp-section {
+  margin-bottom: 44px;
+}
+
+.rp-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111;
+  border-bottom: 2px solid #111;
+  padding-bottom: 6px;
+  margin: 0 0 18px;
+  font-family: 'Arial', sans-serif;
+}
+
+.rp-section p {
+  margin: 0 0 10px;
+}
+
+.rp-list {
+  padding-left: 22px;
+  margin: 10px 0;
+}
+
+.rp-list li {
+  margin-bottom: 8px;
+}
+
+/* ── Summary table ── */
+
+.rp-table {
+  border-collapse: collapse;
+  font-family: 'Arial', sans-serif;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+.rp-table th,
+.rp-table td {
+  padding: 7px 20px 7px 0;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+}
+
+.rp-table th {
+  font-weight: 700;
+  color: #333;
+}
+
+.rp-sev-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ── Individual findings ── */
+
+.rp-finding {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  page-break-inside: avoid;
+}
+
+.rp-finding-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.rp-finding-num {
+  font-weight: 700;
+  font-family: 'Arial', sans-serif;
+  color: #555;
+}
+
+.rp-finding-cve {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111;
+}
+
+.rp-finding-badge {
+  padding: 2px 9px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Arial', sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.rp-finding-desc {
+  font-size: 13px;
+  color: #333;
+  margin: 0 0 8px;
+}
+
+.rp-finding-vector {
+  font-size: 12px;
+  color: #555;
+  margin: 0 0 10px;
+}
+
+.rp-finding-vector code {
+  font-size: 11px;
+  background: #f5f5f5;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.rp-finding-action {
+  font-size: 13px;
+  color: #333;
+}
+
+.rp-modules {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.rp-modules li {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.rp-modules code {
+  background: #f5f5f5;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.rp-modules a {
+  color: #0e639c;
+}
+
+/* ── Vuln scan output ── */
+
+.rp-pre {
+  background: #f8f8f8;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 16px;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'Courier New', monospace;
+  color: #222;
+}
+
+.rp-no-data {
+  color: #888;
+  font-style: italic;
+  font-family: 'Arial', sans-serif;
+  font-size: 13px;
+}
+
+/* ── Remarks ── */
+
+.rp-remarks-hint {
+  font-family: 'Arial', sans-serif;
+  font-size: 12px;
+  color: #777;
+  margin: 0 0 8px;
+}
+
+.rp-remarks-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font-family: 'Arial', sans-serif;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+  color: #111;
+  line-height: 1.6;
+}
+
+.rp-remarks-input:focus {
+  outline: none;
+  border-color: #0e639c;
+}
+
+.rp-remarks-text {
+  font-family: 'Georgia', serif;
+  font-size: 14px;
+  white-space: pre-wrap;
+  color: #222;
+  line-height: 1.7;
+}
+
+/* ── Print/no-print visibility helpers ── */
+
+.print-only {
+  display: none;
+}
+
+/* ── Print media ── */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  .rp-wrapper {
+    background: white;
+  }
+
+  .rp-document {
+    max-width: none;
+    margin: 0;
+    padding: 20mm 18mm;
+    box-shadow: none;
+    font-size: 11pt;
+  }
+
+  .rp-cover {
+    page-break-after: always;
+  }
+
+  .rp-section {
+    page-break-inside: avoid;
+  }
+
+  .rp-finding {
+    page-break-inside: avoid;
+  }
+
+  .rp-pre {
+    font-size: 8pt;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .rp-section-title {
+    font-size: 14pt;
+  }
+
+  .rp-cover-title {
+    font-size: 26pt;
+  }
+
+  a {
+    color: #000;
+    text-decoration: underline;
+  }
+}
+
+/* ── Scan summary ── */
+.rp-scan-meta {
+  font-size: 13px;
+  margin-bottom: 16px;
+  color: #ccc;
+}
+
+.rp-scan-approx {
+  color: #858585;
+  font-style: italic;
+}
+
+.rp-subsection-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 20px 0 8px 0;
+}
+
+.rp-state-open   { color: #98c379; font-weight: 600; }
+.rp-state-filtered { color: #e06c75; }
+
+.rp-vuln-finding {
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-left: 3px solid #e06c75;
+  border-radius: 3px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+
+.rp-vuln-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.rp-vuln-script {
+  font-size: 12px;
+  background: #1e1e1e;
+  padding: 2px 6px;
+  border-radius: 2px;
+  color: #4fc1ff;
+}
+
+.rp-vuln-state {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.rp-state-vuln   { background: #3a1010; color: #e06c75; }
+.rp-state-likely { background: #3a2a10; color: #e5c07b; }
+
+.rp-vuln-title { margin: 4px 0; font-size: 13px; color: #d4d4d4; }
+
+.rp-vuln-cves {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.rp-cve-tag {
+  display: inline-block;
+  margin: 0 4px 2px 0;
+  font-size: 11px;
+  background: #1a2a3a;
+  color: #4fc1ff;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.rp-vuln-meta { margin: 4px 0; font-size: 11px; color: #858585; }
+
+.rp-finding-targets { margin: 4px 0 8px; font-size: 12px; color: #aaa; }
+
+/* ── Loot section ── */
+.rp-loot-group {
+  margin-bottom: 24px;
+}
+
+.rp-loot-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4fc1ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.rp-loot-table {
+  margin-bottom: 10px;
+}
+
+.rp-loot-source {
+  background: #2a2a2a;
+  font-size: 11px;
+  color: #858585;
+  text-align: left;
+  font-weight: normal;
+  padding: 4px 8px;
+}
+
+.rp-loot-ts {
+  color: #585858;
+  font-size: 10px;
+}
+
+.rp-loot-key {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #858585;
+  white-space: nowrap;
+  width: 160px;
+  vertical-align: top;
+}
+
+.rp-loot-val {
+  vertical-align: top;
+}
+
+.rp-loot-pre {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #d4d4d4;
+}
+
+@media print {
+  .rp-loot-group-title { color: #000; border-color: #ccc; }
+  .rp-loot-source { background: #f5f5f5; }
+  .rp-loot-pre { color: #000; }
+}

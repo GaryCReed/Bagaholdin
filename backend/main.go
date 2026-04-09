@@ -1,0 +1,1310 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
+)
+
+func init() {
+	// Load .env file if it exists
+	if err := loadEnv(".env"); err != nil {
+		log.Printf("Warning: Could not load .env file: %v", err)
+	}
+	// auth.go's init() ran before this (alphabetical order), so jwtSecret may
+	// have been set before .env was loaded.  Re-read now that .env is in the env.
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		jwtSecret = []byte(secret)
+	}
+}
+
+func main() {
+	// Load environment variables
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgresql://postgres:@localhost:5432/msf_web?sslmode=disable"
+	}
+
+	log.Printf("Using DATABASE_URL: %s", dbURL)
+
+	// Initialize database
+	db, err := NewDB(dbURL)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to database: %v", err)
+		log.Println("Please ensure PostgreSQL is running and the database exists.")
+		log.Println("Run: sudo systemctl start postgresql")
+		log.Println("Run: sudo -u postgres createdb msf_web")
+		log.Println("Continuing without database - some features will not work.")
+		db = nil
+	} else {
+		// Run migrations
+		if err := db.Migrate(); err != nil {
+			log.Fatalf("Failed to run migrations: %v", err)
+		}
+		log.Println("Database connected and migrated successfully")
+	}
+
+	// Initialize router
+	router := chi.NewRouter()
+	router.Use(middleware.Logger)
+	router.Use(middleware.Recoverer)
+
+	// Rate-limited auth routes (10 requests/minute per IP)
+	authLimiter := httprate.LimitByIP(10, time.Minute)
+	router.With(authLimiter).Post("/api/auth/register", handleRegister(db))
+	router.With(authLimiter).Post("/api/auth/login", handleLogin(db))
+	router.Post("/api/auth/logout", handleLogout)
+	router.Get("/api/ws", handleWebSocket(db))
+
+	// Protected routes
+	router.Route("/api", func(r chi.Router) {
+		r.Use(authMiddleware)
+
+		r.Get("/health", handleHealth)
+		r.Get("/network", handleNetwork)
+
+		// Projects
+		r.Get("/projects", handleGetProjects(db))
+		r.Post("/projects", handleCreateProject(db))
+		r.Get("/projects/{id}", handleGetProject(db))
+		r.Delete("/projects/{id}", handleDeleteProject(db))
+		r.Get("/projects/{id}/sessions", handleGetProjectSessions(db))
+		r.Post("/projects/{id}/sessions", handleCreateProjectSession(db))
+		r.Get("/projects/{id}/hosts", handleGetProjectHosts(db))
+		r.Post("/projects/{id}/scan", handleProjectScan(db))
+
+		r.Get("/sessions", handleGetSessions(db))
+		r.Post("/sessions", handleCreateSession(db))
+		r.Get("/sessions/{id}", handleGetSession(db))
+		r.Delete("/sessions/{id}", handleDeleteSession(db))
+		r.Post("/exploits/run", handleRunExploit(db))
+		r.Post("/scan", handleScan)
+		r.Post("/sessions/{id}/vuln-scan", handleVulnScan(db))
+		r.Get("/sessions/{id}/vuln-scan", handleGetVulnScan(db))
+		r.Post("/sessions/{id}/enumerate", handleEnumerate(db))
+		r.Post("/sessions/{id}/cve-analysis", handleCVEAnalysis(db))
+		r.Post("/sessions/{id}/shell", handleShellCommand(db))
+		r.Get("/sessions/{id}/msf-sessions", handleListMsfSessions(db))
+		r.Post("/sessions/{id}/loot", handleSaveLoot(db))
+		r.Get("/sessions/{id}/loot", handleGetLoot(db))
+	})
+
+	// Serve React SPA: real files are served directly, everything else falls back to index.html
+	buildDir := "../frontend/build"
+	fileServer := http.FileServer(http.Dir(buildDir))
+	router.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := os.Stat(buildDir + r.URL.Path); os.IsNotExist(err) {
+			http.ServeFile(w, r, buildDir+"/index.html")
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
+
+	port := ":8080"
+	fmt.Printf("Server starting on http://localhost%s\n", port)
+	log.Fatal(http.ListenAndServe(port, router))
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"status":"ok"}`)
+}
+
+func handleRegister(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"Database not available"}`)
+			return
+		}
+
+		var req struct {
+			Username string `json:"username"`
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+
+		if err := parseJSON(r, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"Invalid request"}`)
+			return
+		}
+
+		if req.Username == "" || req.Email == "" || req.Password == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"username, email and password are required"}`)
+			return
+		}
+
+		user, err := db.CreateUser(req.Username, req.Email, req.Password)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		token, err := generateToken(user.ID, user.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"Failed to generate token"}`)
+			return
+		}
+
+		setAuthCookie(w, token)
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, `{"user":{"id":%d,"username":"%s","email":"%s"}}`, user.ID, user.Username, user.Email)
+	}
+}
+
+func handleLogin(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"Database not available"}`)
+			return
+		}
+
+		var req struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+
+		if err := parseJSON(r, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"Invalid request"}`)
+			return
+		}
+
+		user, err := db.GetUser(req.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid credentials"}`)
+			return
+		}
+
+		if err := user.VerifyPassword(req.Password); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid credentials"}`)
+			return
+		}
+
+		token, err := generateToken(user.ID, user.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"Failed to generate token"}`)
+			return
+		}
+
+		setAuthCookie(w, token)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"user":{"id":%d,"username":"%s","email":"%s"}}`, user.ID, user.Username, user.Email)
+	}
+}
+
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	clearAuthCookie(w)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"message":"logged out"}`)
+}
+
+// cleanupSessionData removes all server-side artifacts for a session.
+func cleanupSessionData(targetHost string) {
+	os.Remove(scanXMLPath(targetHost))
+}
+
+func cleanupLoot(sessionID int) {
+	os.Remove(lootXMLPath(sessionID))
+}
+
+func handleDeleteSession(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		// Fetch session before deleting so we have the target host for file cleanup.
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		// Kill the running msfconsole process if one exists.
+		CloseExecutor(sessionID)
+
+		if err := db.DeleteSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		// Remove nmap XML, loot, and any other scan artifacts.
+		cleanupSessionData(session.TargetHost)
+		cleanupLoot(sessionID)
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"message":"session deleted"}`)
+	}
+}
+
+func handleRunExploit(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		var req struct {
+			SessionID int                    `json:"session_id"`
+			Exploit   string                 `json:"exploit"`
+			Options   map[string]interface{} `json:"options"`
+		}
+
+		if err := parseJSON(r, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"Invalid request"}`)
+			return
+		}
+
+		if req.Exploit == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"exploit is required"}`)
+			return
+		}
+
+		executor := GetExecutor(req.SessionID)
+		if executor == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"no active console for this session - open the console tab first"}`)
+			return
+		}
+
+		commands := []string{fmt.Sprintf("use %s", req.Exploit)}
+		for k, v := range req.Options {
+			commands = append(commands, fmt.Sprintf("set %s %v", k, v))
+		}
+		commands = append(commands, "run")
+
+		for _, cmd := range commands {
+			if err := executor.ExecuteCommand(cmd); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, `{"error":"failed to send command: %s"}`, err.Error())
+				return
+			}
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintf(w, `{"message":"Exploit launched","session_id":%d}`, req.SessionID)
+	}
+}
+
+type SessionWithStatus struct {
+	Session
+	IsRunning bool `json:"is_running"`
+}
+
+func handleGetSessions(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"Database not available"}`)
+			return
+		}
+
+		token := extractToken(r)
+		if token == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Missing token"}`)
+			return
+		}
+
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		sessions, err := db.GetUserSessions(claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"Failed to fetch sessions"}`)
+			return
+		}
+
+		result := make([]SessionWithStatus, len(sessions))
+		for i, s := range sessions {
+			result[i] = SessionWithStatus{Session: s, IsRunning: GetExecutor(s.ID) != nil}
+		}
+
+		w.WriteHeader(http.StatusOK)
+		data, _ := encodeJSON(result)
+		fmt.Fprintf(w, `{"sessions":%s}`, data)
+	}
+}
+
+func handleCreateSession(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"Database not available"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		var req struct {
+			SessionName string `json:"session_name"`
+			TargetHost  string `json:"target_host"`
+		}
+
+		if err := parseJSON(r, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"Invalid request"}`)
+			return
+		}
+
+		if req.SessionName == "" || req.TargetHost == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"session_name and target_host are required"}`)
+			return
+		}
+
+		session, err := db.CreateSession(claims.UserID, req.SessionName, req.TargetHost)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		data, _ := encodeJSON(session)
+		fmt.Fprintf(w, `{"session":%s}`, data)
+	}
+}
+
+func handleWebSocket(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		handleCommandWebSocket(w, r, db)
+	}
+}
+
+func handleGetSession(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		result := SessionWithStatus{Session: *session, IsRunning: GetExecutor(sessionID) != nil}
+		data, _ := encodeJSON(result)
+		fmt.Fprintf(w, `{"session":%s}`, data)
+	}
+}
+
+// handleVulnScan starts a background nmap scan decoupled from the HTTP request.
+// The scan survives client disconnection; results are polled via handleGetVulnScan.
+func handleVulnScan(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		targetHost := session.TargetHost
+
+		// Reject if already running for this host.
+		if _, running := activeScan.Load(targetHost); running {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"status":"running"}`)
+			return
+		}
+
+		// Remove all previous scan artefacts so the poller doesn't return stale results.
+		os.Remove(scanOutputPath(targetHost))
+		os.Remove(scanOutputPath(targetHost) + ".err")
+		os.Remove(scanXMLPath(targetHost))
+
+		activeScan.Store(targetHost, struct{}{})
+
+		// Run nmap detached from the request context so navigation doesn't kill it.
+		go func() {
+			defer activeScan.Delete(targetHost)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			xmlPath := scanXMLPath(targetHost)
+			output, err := vulnScan(ctx, targetHost, xmlPath)
+			if err != nil {
+				os.WriteFile(scanOutputPath(targetHost)+".err", []byte(err.Error()), 0o644)
+				return
+			}
+			os.WriteFile(scanOutputPath(targetHost), []byte(output), 0o644)
+		}()
+
+		fmt.Fprint(w, `{"status":"started"}`)
+	}
+}
+
+// handleGetVulnScan lets the frontend poll for a scan's status and results.
+func handleGetVulnScan(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		targetHost := session.TargetHost
+
+		// Still running — no results yet.
+		if _, running := activeScan.Load(targetHost); running {
+			fmt.Fprint(w, `{"status":"running"}`)
+			return
+		}
+
+		// Check for error marker.
+		errPath := scanOutputPath(targetHost) + ".err"
+		if errBytes, err2 := os.ReadFile(errPath); err2 == nil {
+			os.Remove(errPath)
+			errData, _ := encodeJSON(string(errBytes))
+			fmt.Fprintf(w, `{"status":"error","error":%s}`, errData)
+			return
+		}
+
+		// Return completed results.
+		outputBytes, err := os.ReadFile(scanOutputPath(targetHost))
+		if err != nil {
+			// No output file — no scan has been run yet.
+			fmt.Fprint(w, `{"status":"none"}`)
+			return
+		}
+
+		output := string(outputBytes)
+		xmlPath := scanXMLPath(targetHost)
+		osInfo := parseNmapOS(xmlPath)
+		osFamily := ""
+		if osInfo != nil {
+			osFamily = strings.ToLower(osInfo.Family)
+		}
+		services, _ := parseNmapServices(xmlPath, osFamily)
+
+		outputData, _ := encodeJSON(output)
+		osData, _ := encodeJSON(osInfo)
+		servicesData, _ := encodeJSON(services)
+		fmt.Fprintf(w, `{"status":"done","output":%s,"target":%q,"xml_path":%q,"services":%s,"os_info":%s}`,
+			outputData, targetHost, xmlPath, servicesData, osData)
+	}
+}
+
+func handleCVEAnalysis(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		// Build the list of target hosts to aggregate CVEs from:
+		// always include this session's host, plus all sibling sessions in the project.
+		targetHosts := []string{session.TargetHost}
+		if session.ProjectID != nil {
+			siblings, err := db.GetProjectSessions(*session.ProjectID, claims.UserID)
+			if err == nil {
+				for _, s := range siblings {
+					if s.TargetHost != session.TargetHost {
+						targetHosts = append(targetHosts, s.TargetHost)
+					}
+				}
+			}
+		}
+
+		// Aggregate CVEs across all hosts; deduplicate by CVE ID, merge module/target lists.
+		type cveInfo struct {
+			modules map[string]struct{}
+			targets []string
+		}
+		cveMap := map[string]*cveInfo{}
+		anyFound := false
+
+		for _, target := range targetHosts {
+			cves, err := parseNmapXML(scanXMLPath(target))
+			if err != nil {
+				continue
+			}
+			anyFound = true
+			for _, cve := range cves {
+				if _, ok := cveMap[cve]; !ok {
+					cveMap[cve] = &cveInfo{modules: map[string]struct{}{}}
+				}
+				cveMap[cve].targets = append(cveMap[cve].targets, target)
+				for _, mod := range findMsfModules(cve) {
+					cveMap[cve].modules[mod] = struct{}{}
+				}
+			}
+		}
+
+		if !anyFound {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
+			return
+		}
+
+		results := make([]CVEResult, 0, len(cveMap))
+		for cve, info := range cveMap {
+			mods := make([]string, 0, len(info.modules))
+			for mod := range info.modules {
+				mods = append(mods, mod)
+			}
+			sort.Strings(mods)
+			results = append(results, CVEResult{CVE: cve, Modules: mods, Targets: info.targets})
+		}
+		sort.Slice(results, func(i, j int) bool { return results[i].CVE < results[j].CVE })
+
+		allTargets := strings.Join(targetHosts, ", ")
+		data, _ := encodeJSON(results)
+		fmt.Fprintf(w, `{"cves":%s,"target":%q}`, data, allTargets)
+	}
+}
+
+func handleEnumerate(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		var body struct {
+			OSFamily string `json:"os_family"`
+		}
+		parseJSON(r, &body) // os_family is optional
+
+		xmlPath := scanXMLPath(session.TargetHost)
+		services, err := parseNmapServices(xmlPath, body.OSFamily)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
+			return
+		}
+
+		data, _ := encodeJSON(services)
+		fmt.Fprintf(w, `{"services":%s,"target":%q}`, data, session.TargetHost)
+	}
+}
+
+func handleShellCommand(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		_, err = db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		var body struct {
+			Command string `json:"command"`
+		}
+		if err := parseJSON(r, &body); err != nil || strings.TrimSpace(body.Command) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"command required"}`)
+			return
+		}
+
+		executor := GetExecutor(sessionID)
+		if executor == nil {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"error":"Console not initialised — open the Console tab first"}`)
+			return
+		}
+
+		// Subscribe to output fan-out, send the command, collect output until
+		// 800 ms of silence or the 10 s hard deadline, then return.
+		connID, subChan := executor.Subscribe()
+		defer executor.Unsubscribe(connID)
+
+		if err := executor.ExecuteCommand(body.Command); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		var lines []string
+		deadline := time.After(10 * time.Second)
+		idle := time.NewTimer(800 * time.Millisecond)
+		defer idle.Stop()
+
+	collect:
+		for {
+			select {
+			case line, ok := <-subChan:
+				if !ok {
+					break collect
+				}
+				lines = append(lines, line)
+				if !idle.Stop() {
+					select {
+					case <-idle.C:
+					default:
+					}
+				}
+				idle.Reset(800 * time.Millisecond)
+			case <-idle.C:
+				break collect
+			case <-deadline:
+				break collect
+			}
+		}
+
+		output := strings.Join(lines, "\n")
+		data, _ := encodeJSON(output)
+		fmt.Fprintf(w, `{"output":%s}`, data)
+	}
+}
+
+func handleListMsfSessions(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		_, err = db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+
+		executor := GetExecutor(sessionID)
+		if executor == nil {
+			fmt.Fprint(w, `{"sessions":[]}`)
+			return
+		}
+
+		connID, subChan := executor.Subscribe()
+		defer executor.Unsubscribe(connID)
+
+		if err := executor.ExecuteCommand("sessions -l"); err != nil {
+			fmt.Fprint(w, `{"sessions":[]}`)
+			return
+		}
+
+		var lines []string
+		deadline := time.After(5 * time.Second)
+		idle := time.NewTimer(1500 * time.Millisecond)
+		defer idle.Stop()
+
+	collect:
+		for {
+			select {
+			case line, ok := <-subChan:
+				if !ok {
+					break collect
+				}
+				lines = append(lines, line)
+				if !idle.Stop() {
+					select {
+					case <-idle.C:
+					default:
+					}
+				}
+				idle.Reset(1500 * time.Millisecond)
+			case <-idle.C:
+				break collect
+			case <-deadline:
+				break collect
+			}
+		}
+
+		output := strings.TrimSpace(strings.Join(lines, "\n"))
+		data, _ := encodeJSON(output)
+		fmt.Fprintf(w, `{"output":%s}`, data)
+	}
+}
+
+func handleSaveLoot(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		var body struct {
+			Cmd    string `json:"cmd"`
+			Output string `json:"output"`
+		}
+		parseJSON(r, &body)
+
+		if err := AppendLoot(sessionID, session.TargetHost, body.Cmd, body.Output); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+		fmt.Fprint(w, `{"ok":true}`)
+	}
+}
+
+func handleGetLoot(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		doc := loadLootDocument(sessionID)
+		if doc == nil {
+			fmt.Fprint(w, `{"items":[]}`)
+			return
+		}
+		data, _ := encodeJSON(doc.Items)
+		fmt.Fprintf(w, `{"items":%s}`, data)
+	}
+}
+
+func handleScan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		CIDR string `json:"cidr"`
+	}
+	parseJSON(r, &req)
+
+	cidr := req.CIDR
+	if cidr == "" {
+		nets := getLocalNetworks()
+		if len(nets) == 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"no local networks detected"}`)
+			return
+		}
+		cidr = nets[0]
+	}
+
+	results, err := scanNetwork(cidr)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"error":"scan failed: %s"}`, err.Error())
+		return
+	}
+
+	data, _ := encodeJSON(results)
+	fmt.Fprintf(w, `{"hosts":%s,"cidr":%q}`, data, cidr)
+}
+
+func handleNetwork(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	ifaces := getLocalInterfaces()
+	// Also expose flat network list for backwards-compat (used for LHOST selection).
+	networks := getLocalNetworks()
+	ifaceData, _ := encodeJSON(ifaces)
+	netData, _ := encodeJSON(networks)
+	fmt.Fprintf(w, `{"interfaces":%s,"networks":%s}`, ifaceData, netData)
+}
+
+func handleGetProjectHosts(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		hosts, err := db.GetProjectHosts(projectID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"project not found"}`)
+			return
+		}
+		data, _ := encodeJSON(hosts)
+		fmt.Fprintf(w, `{"hosts":%s}`, data)
+	}
+}
+
+func handleProjectScan(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		project, err := db.GetProject(projectID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"project not found"}`)
+			return
+		}
+
+		// Determine CIDR: use project's network_range if set, else auto-detect
+		var req struct {
+			CIDR string `json:"cidr"`
+		}
+		parseJSON(r, &req)
+		cidr := req.CIDR
+		if cidr == "" {
+			cidr = project.NetworkRange
+		}
+		if cidr == "" {
+			nets := getLocalNetworks()
+			if len(nets) == 0 {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprint(w, `{"error":"no local networks detected"}`)
+				return
+			}
+			cidr = nets[0]
+		}
+
+		results, err := scanNetwork(cidr)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"scan failed: %s"}`, err.Error())
+			return
+		}
+
+		if err := db.UpsertScanResults(projectID, results); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"failed to save results: %s"}`, err.Error())
+			return
+		}
+
+		hosts, err := db.GetProjectHosts(projectID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"failed to fetch hosts"}`)
+			return
+		}
+		data, _ := encodeJSON(hosts)
+		fmt.Fprintf(w, `{"hosts":%s,"cidr":%q}`, data, cidr)
+	}
+}
+
+func handleGetProjects(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		projects, err := db.GetUserProjects(claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"Failed to fetch projects"}`)
+			return
+		}
+		data, _ := encodeJSON(projects)
+		fmt.Fprintf(w, `{"projects":%s}`, data)
+	}
+}
+
+func handleCreateProject(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		var req struct {
+			Name         string `json:"name"`
+			NetworkRange string `json:"network_range"`
+		}
+		if err := parseJSON(r, &req); err != nil || req.Name == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"name is required"}`)
+			return
+		}
+		p, err := db.CreateProject(claims.UserID, req.Name, req.NetworkRange)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		data, _ := encodeJSON(p)
+		fmt.Fprintf(w, `{"project":%s}`, data)
+	}
+}
+
+func handleGetProject(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		p, err := db.GetProject(projectID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"project not found"}`)
+			return
+		}
+		data, _ := encodeJSON(p)
+		fmt.Fprintf(w, `{"project":%s}`, data)
+	}
+}
+
+func handleDeleteProject(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		// Collect child sessions before deletion for cleanup.
+		childSessions, _ := db.GetProjectSessions(projectID, claims.UserID)
+
+		// Close any running consoles and delete scan/loot files for each child session.
+		for _, s := range childSessions {
+			CloseExecutor(s.ID)
+			cleanupSessionData(s.TargetHost)
+			cleanupLoot(s.ID)
+		}
+
+		// Delete sessions explicitly so they are fully removed (not just orphaned).
+		for _, s := range childSessions {
+			db.DeleteSession(s.ID, claims.UserID) //nolint:errcheck
+		}
+
+		if err := db.DeleteProject(projectID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"project not found"}`)
+			return
+		}
+
+		// Return deleted session IDs so the frontend can purge localStorage.
+		ids := make([]int, len(childSessions))
+		for i, s := range childSessions {
+			ids[i] = s.ID
+		}
+		idsData, _ := encodeJSON(ids)
+		fmt.Fprintf(w, `{"message":"project deleted","deleted_session_ids":%s}`, idsData)
+	}
+}
+
+func handleGetProjectSessions(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		sessions, err := db.GetProjectSessions(projectID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"project not found"}`)
+			return
+		}
+		result := make([]SessionWithStatus, len(sessions))
+		for i, s := range sessions {
+			result[i] = SessionWithStatus{Session: s, IsRunning: GetExecutor(s.ID) != nil}
+		}
+		data, _ := encodeJSON(result)
+		fmt.Fprintf(w, `{"sessions":%s}`, data)
+	}
+}
+
+func handleCreateProjectSession(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		var req struct {
+			SessionName string `json:"session_name"`
+			TargetHost  string `json:"target_host"`
+		}
+		if err := parseJSON(r, &req); err != nil || req.SessionName == "" || req.TargetHost == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"session_name and target_host are required"}`)
+			return
+		}
+		session, err := db.CreateProjectSession(claims.UserID, projectID, req.SessionName, req.TargetHost)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		data, _ := encodeJSON(session)
+		fmt.Fprintf(w, `{"session":%s}`, data)
+	}
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := extractToken(r)
+		if token == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Missing authorization token"}`)
+			return
+		}
+
+		claims, err := validateToken(token)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid authorization token"}`)
+			return
+		}
+
+		// Store user ID in context for use in handlers
+		r.Header.Set("X-User-ID", fmt.Sprintf("%d", claims.UserID))
+		r.Header.Set("X-Username", claims.Username)
+
+		next.ServeHTTP(w, r)
+	})
+}

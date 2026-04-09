@@ -1,0 +1,275 @@
+.projects-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+}
+
+/* ── Header ── */
+.projects-header {
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.projects-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.projects-header h1 {
+  margin: 0;
+  font-size: 18px;
+  color: #0e639c;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.projects-network-info {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.projects-network-cidr {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #858585;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.projects-iface-name {
+  color: #4fc1ff;
+  font-weight: 600;
+}
+
+.logout-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  background-color: #a6263d;
+  border: none;
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.logout-btn:hover {
+  background-color: #c5263d;
+}
+
+/* ── Body ── */
+.projects-body {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 32px 24px;
+}
+
+.projects-panel {
+  width: 100%;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Shared panel heading ── */
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  padding: 6px 14px;
+  font-size: 12px;
+  background-color: #0e639c;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #1177bb;
+}
+
+.btn-primary:disabled {
+  background-color: #3d3d3d;
+  color: #858585;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  padding: 6px 14px;
+  font-size: 12px;
+  background-color: transparent;
+  color: #858585;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-ghost:hover {
+  color: #d4d4d4;
+  border-color: #858585;
+}
+
+/* ── New project form ── */
+.new-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background-color: #2d2d2d;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+}
+
+.new-project-form input {
+  padding: 7px 10px;
+  font-size: 12px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  color: #d4d4d4;
+  outline: none;
+}
+
+.new-project-form input:focus {
+  border-color: #0e639c;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-error {
+  color: #e06c75;
+  font-size: 11px;
+}
+
+/* ── Hint ── */
+.empty-hint {
+  color: #585858;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ── Project cards ── */
+.project-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-card {
+  display: flex;
+  align-items: center;
+  background-color: #2d2d2d;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  overflow: hidden;
+}
+
+.project-card:hover {
+  border-color: #0e639c;
+}
+
+.project-card-body {
+  flex: 1;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.project-card-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #d4d4d4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-card-range {
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: #858585;
+  margin-top: 3px;
+}
+
+.project-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.btn-open {
+  padding: 5px 10px;
+  font-size: 11px;
+  background-color: #0e639c;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-open:hover {
+  background-color: #1177bb;
+  color: #fff;
+}
+
+.btn-kill {
+  background: none;
+  border: none;
+  color: #585858;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.btn-kill:hover {
+  color: #e06c75;
+  background-color: rgba(224, 108, 117, 0.15);
+}

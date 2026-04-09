@@ -1,0 +1,63 @@
+?? Enumeration page window needs to be mostly msf console window or pop out
+
+cd ~/Documents/GitHub/Msf-Web-Interface/frontend && npm start
+
+cd ~/Documents/GitHub/Msf-Web-Interface/backend && go run .
+
+?? run sessions as background jobs
+
+?? Export an entire project in xml format??
+
+?? Problem with repeated checks for shell
+
+?? Diagramatic of the project network, 
+inlcuding colour coding for compromised hosts.
+
+!!!! Within the shells panel, the list of sessions needs to persist when moving
+away from that tab or page
+
+?? The overview link should be to the hosts project folder
+
+When a link is clicked that links to
+another page, left click opens the page in the same window, right click opens the link in a new, forgrounded tab.
+This also applies to the report button in the individual project page, which should open the report in a new tab.
+
+The run button for each module in the enumeration panelruns the command twice
+Dont allow checking for shell sessions until after a shell has been created.
+
+Automatically refresh the shells panel when a new meterepreter session is 
+created or a new shell session is created. 
+show the "interact" with meterpreter as coloured purple
+
+the overview link rename to Projects and
+this is included to the left of the 
+project name in the individual project page
+The project name itself has no link
+
+Firewalls and scans, searchsploit
+
+Need to add any usernames and passwords used for successful msf session creation to loot
+
+need to able to background sessions and return to them via a button
+
+sudo -l
+sudo: a terminal is required to read the password; either use the -S option to read from standard input
+or configure an askpass helper 
+
+sudo: a password is required
+
+shell being lost when I do post exploitation commands and return to shells.
+msf command line sending command twice
+
+Quick Commands should be listed for windows and or for linux dependent on the hosts os
+
+[ERROR] Session not found
+[!] Disconnected. Reconnecting in 1s (attempt 1/5)...
+[*] Connected to metasploit console
+[ERROR] Session not found
+
+
+I want to incorporate Linpeas and PEASS to be runnable dependent on OS detected,
+the results from these scans are filtered for useful information to include in the report
+
+rewrite the README.md and QUICKSTART.md to reflect the current version
