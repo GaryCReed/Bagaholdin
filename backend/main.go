@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -101,6 +103,7 @@ func main() {
 		r.Get("/sessions/{id}/loot", handleGetLoot(db))
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
+		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))
 	})
 
 	// Serve React SPA: real files are served directly, everything else falls back to index.html
@@ -974,6 +977,129 @@ func handleSaveNotes(db *DB) http.HandlerFunc {
 			return
 		}
 		fmt.Fprint(w, `{"ok":true}`)
+	}
+}
+
+// SearchsploitHit represents a single searchsploit result row.
+type SearchsploitHit struct {
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	Type     string `json:"type"`
+	Platform string `json:"platform"`
+	EdbID    string `json:"edb_id"`
+	Query    string `json:"query"`
+}
+
+// handleSearchsploit reads the nmap XML for the session's target host, builds one
+// searchsploit query per discovered service, runs them, and returns deduplicated results.
+func handleSearchsploit(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		services, err := parseNmapServices(scanXMLPath(session.TargetHost), "")
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
+			return
+		}
+
+		// Build deduplicated queries from open-port services.
+		seen := map[string]bool{}
+		type queryEntry struct{ term string }
+		var queries []queryEntry
+		for _, svc := range services {
+			if svc.State != "open" {
+				continue
+			}
+			var term string
+			switch {
+			case svc.Product != "" && svc.Version != "":
+				term = svc.Product + " " + svc.Version
+			case svc.Product != "":
+				term = svc.Product
+			case svc.Name != "":
+				term = svc.Name
+			}
+			if term == "" || seen[term] {
+				continue
+			}
+			seen[term] = true
+			queries = append(queries, queryEntry{term})
+		}
+
+		if len(queries) == 0 {
+			fmt.Fprint(w, `{"results":[],"queries":[]}`)
+			return
+		}
+
+		hitSeen := map[string]bool{}
+		var hits []SearchsploitHit
+		var ranQueries []string
+
+		for _, q := range queries {
+			ranQueries = append(ranQueries, q.term)
+			out, _ := exec.Command("searchsploit", "--disable-colour", q.term).Output()
+			for _, line := range strings.Split(string(out), "\n") {
+				if !strings.Contains(line, "|") ||
+					strings.HasPrefix(strings.TrimSpace(line), "-") ||
+					strings.Contains(strings.ToLower(line), "title") {
+					continue
+				}
+				pipeIdx := strings.LastIndex(line, "|")
+				if pipeIdx == -1 {
+					continue
+				}
+				title := strings.TrimSpace(line[:pipeIdx])
+				path := strings.TrimSpace(line[pipeIdx+1:])
+				if title == "" || path == "" || hitSeen[path] {
+					continue
+				}
+				hitSeen[path] = true
+
+				parts := strings.Split(path, "/")
+				hitType, platform := "", ""
+				if len(parts) >= 1 {
+					hitType = parts[0]
+				}
+				if len(parts) >= 2 {
+					platform = parts[1]
+				}
+				file := parts[len(parts)-1]
+				edbID := strings.TrimSuffix(file, filepath.Ext(file))
+
+				hits = append(hits, SearchsploitHit{
+					Title: title, Path: path, Type: hitType,
+					Platform: platform, EdbID: edbID, Query: q.term,
+				})
+			}
+		}
+
+		if hits == nil {
+			hits = []SearchsploitHit{}
+		}
+		queriesData, _ := encodeJSON(ranQueries)
+		hitsData, _ := encodeJSON(hits)
+		fmt.Fprintf(w, `{"results":%s,"queries":%s}`, hitsData, queriesData)
 	}
 }
 

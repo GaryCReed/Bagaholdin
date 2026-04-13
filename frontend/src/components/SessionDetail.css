@@ -208,6 +208,55 @@
   overflow: hidden;
 }
 
+/* Collapsed state — shrink to header bar only */
+.sd-panel-collapsed {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+/* Console toggle bar — sits above the Console component */
+.sd-console-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 3px 3px 0 0;
+  flex-shrink: 0;
+}
+
+.sd-console-toggle-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #686888;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.btn-panel-toggle {
+  background: transparent;
+  border: none;
+  color: #585878;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.btn-panel-toggle:hover {
+  background: #2a2a4a;
+  color: #a0a0c0;
+}
+
+.action-panel-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sd-no-session {
   display: flex;
   align-items: center;
@@ -1395,4 +1444,74 @@
 
 .notes-textarea::placeholder {
   color: #404058;
+}
+
+/* ── Searchsploit panel ──────────────────────────────────────────────────── */
+.ssp-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.ssp-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ssp-input {
+  flex: 1;
+  background: #0d0d1a;
+  border: 1px solid #3a3a5a;
+  border-radius: 3px;
+  color: #e0e0e0;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  padding: 6px 10px;
+  outline: none;
+}
+
+.ssp-input:focus {
+  border-color: #5a5aaa;
+}
+
+.ssp-count {
+  font-size: 11px;
+  color: #686888;
+  padding: 0 2px 4px;
+}
+
+.ssp-results {
+  overflow-x: auto;
+}
+
+.ssp-table th:nth-child(1) { min-width: 260px; }
+.ssp-table th:nth-child(5) { min-width: 200px; }
+
+.ssp-type-pill {
+  background: #1a2a3a;
+  color: #60a0d0;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.ssp-edb-link {
+  color: #d0a060;
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.ssp-edb-link:hover {
+  color: #e0b870;
+  text-decoration: underline;
+}
+
+.ssp-path {
+  color: #686888;
+  font-size: 11px;
 }

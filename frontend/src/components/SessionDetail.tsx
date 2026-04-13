@@ -73,11 +73,12 @@ const ACTIONS = [
   { id: 1, label: '1. Vulnerability Scan' },
   { id: 2, label: '2. Enumeration' },
   { id: 3, label: '3. CVE Analysis' },
-  { id: 4, label: '4. Shells' },
-  { id: 5, label: '5. Post Exploitation' },
-  { id: 6, label: '6. Reporting' },
-  { id: 7, label: '7. Loot' },
-  { id: 8, label: '8. Notes' },
+  { id: 4, label: '4. Searchsploit' },
+  { id: 5, label: '5. Shells' },
+  { id: 6, label: '6. Post Exploitation' },
+  { id: 7, label: '7. Reporting' },
+  { id: 8, label: '8. Loot' },
+  { id: 9, label: '9. Notes' },
 ];
 
 // ── Quick command buttons ──
@@ -399,6 +400,186 @@ async function fetchGitHubRepos(cveID: string): Promise<{ repos: GitHubRepo[] | 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const NVD_DELAY_MS = 7000;
 
+// ── Searchsploit panel ────────────────────────────────────────────────────────
+
+interface SearchsploitResult {
+  title: string;
+  path: string;
+  type: string;
+  platform: string;
+  edb_id: string;
+  query: string;
+}
+
+function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targetHost: string }) {
+  const [autoResults, setAutoResults]   = useState<SearchsploitResult[]>([]);
+  const [autoQueries, setAutoQueries]   = useState<string[]>([]);
+  const [autoLoading, setAutoLoading]   = useState(false);
+  const [autoError, setAutoError]       = useState('');
+  const [autoRan, setAutoRan]           = useState(false);
+
+  const [manualQuery, setManualQuery]   = useState('');
+  const [manualResults, setManualResults] = useState<SearchsploitResult[]>([]);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError]   = useState('');
+  const [manualSearched, setManualSearched] = useState(false);
+
+  // Auto-scan against nmap results on mount.
+  useEffect(() => {
+    if (!sessionId) return;
+    setAutoLoading(true);
+    setAutoError('');
+    axios.get(`/api/sessions/${sessionId}/searchsploit`, { timeout: 60 * 1000 })
+      .then(res => {
+        setAutoResults(res.data.results || []);
+        setAutoQueries(res.data.queries || []);
+        setAutoRan(true);
+      })
+      .catch(err => {
+        setAutoError(err.response?.data?.error || err.message || 'Search failed');
+        setAutoRan(true);
+      })
+      .finally(() => setAutoLoading(false));
+  }, [sessionId]);
+
+  const runManual = async () => {
+    const q = manualQuery.trim();
+    if (!q) return;
+    setManualLoading(true);
+    setManualError('');
+    setManualResults([]);
+    setManualSearched(false);
+    try {
+      // Re-use the auto endpoint but pass a custom query via a manual shell call
+      // so we don't need a separate endpoint.
+      const res = await axios.post(
+        `/api/sessions/${sessionId}/shell`,
+        { command: `searchsploit --disable-colour ${q}` },
+        { timeout: 30 * 1000 }
+      );
+      const lines: string[] = (res.data.output || '').split('\n');
+      const parsed: SearchsploitResult[] = [];
+      for (const line of lines) {
+        if (!line.includes('|') || line.trim().startsWith('-') || line.toLowerCase().includes('title')) continue;
+        const pipeIdx = line.lastIndexOf('|');
+        if (pipeIdx === -1) continue;
+        const title = line.slice(0, pipeIdx).trim();
+        const path  = line.slice(pipeIdx + 1).trim();
+        if (!title || !path) continue;
+        const parts = path.split('/');
+        const file  = parts[parts.length - 1] || '';
+        parsed.push({
+          title, path, query: q,
+          type:     parts[0] || '',
+          platform: parts[1] || '',
+          edb_id:   file.replace(/\.[^.]+$/, ''),
+        });
+      }
+      setManualResults(parsed);
+      setManualSearched(true);
+    } catch (err: any) {
+      setManualError(err.response?.data?.error || err.message || 'Search failed');
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const ResultTable = ({ results, label }: { results: SearchsploitResult[]; label: string }) => (
+    <div className="ssp-results">
+      <div className="ssp-count">{results.length} result{results.length !== 1 ? 's' : ''} — {label}</div>
+      <table className="loot-table ssp-table">
+        <thead><tr><th>Title</th><th>Type</th><th>Platform</th><th>EDB-ID</th><th>Service</th><th>Path</th></tr></thead>
+        <tbody>
+          {results.map((r, i) => (
+            <tr key={i}>
+              <td>{r.title}</td>
+              <td><span className="ssp-type-pill">{r.type}</span></td>
+              <td>{r.platform}</td>
+              <td>
+                {r.edb_id && (
+                  <a className="ssp-edb-link"
+                    href={`https://www.exploit-db.com/exploits/${r.edb_id}`}
+                    target="_blank" rel="noreferrer">
+                    {r.edb_id}
+                  </a>
+                )}
+              </td>
+              <td className="ssp-query-cell">{r.query}</td>
+              <td className="loot-mono ssp-path">{r.path}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="action-panel">
+      <div className="action-panel-header">
+        <span className="action-panel-title">
+          Searchsploit
+          {targetHost && <span className="action-panel-target"> — {targetHost}</span>}
+        </span>
+        <button className="btn-run-scan" onClick={() => {
+          setAutoLoading(true); setAutoError(''); setAutoRan(false);
+          axios.get(`/api/sessions/${sessionId}/searchsploit`, { timeout: 60 * 1000 })
+            .then(res => { setAutoResults(res.data.results || []); setAutoQueries(res.data.queries || []); setAutoRan(true); })
+            .catch(err => { setAutoError(err.response?.data?.error || err.message); setAutoRan(true); })
+            .finally(() => setAutoLoading(false));
+        }} disabled={autoLoading}>
+          {autoLoading ? <><span className="btn-spinner" /> Scanning…</> : 'Re-scan'}
+        </button>
+      </div>
+
+      <div className="ssp-body">
+
+        {/* ── Auto scan results ── */}
+        <div className="ssp-section-title">Scan Results</div>
+        {autoLoading && <p className="output-hint">Running searchsploit against nmap-discovered services…</p>}
+        {autoError && <p className="output-error" style={{ padding: '4px 0' }}>{autoError}</p>}
+        {autoRan && !autoLoading && autoResults.length === 0 && !autoError && (
+          <p className="output-hint">
+            {autoQueries.length === 0
+              ? 'No scan results found — run Vulnerability Scan first.'
+              : `No exploits found for: ${autoQueries.join(', ')}.`}
+          </p>
+        )}
+        {autoResults.length > 0 && (
+          <>
+            {autoQueries.length > 0 && (
+              <div className="ssp-queries">
+                Searched: {autoQueries.map((q, i) => <span key={i} className="ssp-query-pill">{q}</span>)}
+              </div>
+            )}
+            <ResultTable results={autoResults} label={`${autoResults.length} exploit${autoResults.length !== 1 ? 's' : ''} across ${autoQueries.length} service${autoQueries.length !== 1 ? 's' : ''}`} />
+          </>
+        )}
+
+        {/* ── Manual search ── */}
+        <div className="ssp-section-title" style={{ marginTop: '16px' }}>Manual Search</div>
+        <div className="ssp-search-row">
+          <input className="ssp-input" type="text"
+            placeholder="e.g. apache 2.4, vsftpd 2.3, ms17-010"
+            value={manualQuery}
+            onChange={e => setManualQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') runManual(); }}
+          />
+          <button className="btn-run-scan" onClick={runManual} disabled={manualLoading || !manualQuery.trim()}>
+            {manualLoading ? <><span className="btn-spinner" /> Searching…</> : 'Search'}
+          </button>
+        </div>
+        {manualError && <p className="output-error" style={{ padding: '4px 0' }}>{manualError}</p>}
+        {manualSearched && manualResults.length === 0 && !manualLoading && (
+          <p className="output-hint">No results found for "{manualQuery}".</p>
+        )}
+        {manualResults.length > 0 && (
+          <ResultTable results={manualResults} label={`results for "${manualQuery}"`} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const { id } = useParams<{ id: string }>();
   const sessionId = parseInt(id || '0', 10);
@@ -406,6 +587,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const [session, setSession]           = useState<Session | null>(null);
   const [activeAction, setActiveAction] = useState<number | null>(null);
   const [localIfaces, setLocalIfaces]   = useState<{ name: string; cidr: string; ip: string }[]>([]);
+
+  // Panel collapse state — both default to expanded.
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  const [actionCollapsed, setActionCollapsed]   = useState(false);
 
   // Vuln scan state
   const [vulnOutput, setVulnOutput]   = useState('');
@@ -585,12 +770,12 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
   // Always refresh MSF sessions when opening the Shells tab
   useEffect(() => {
-    if (activeAction === 4) loadMsfSessions();
+    if (activeAction === 5) loadMsfSessions();
   }, [activeAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load loot when opening the Loot tab
   useEffect(() => {
-    if (activeAction !== 7 || !sessionId) return;
+    if (activeAction !== 8 || !sessionId) return;
     setLootLoading(true);
     axios.get(`/api/sessions/${sessionId}/loot`)
       .then(res => setLootItems(res.data.items || []))
@@ -600,7 +785,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
   // Load notes when opening the Notes tab
   useEffect(() => {
-    if (activeAction !== 8 || !sessionId) return;
+    if (activeAction !== 9 || !sessionId) return;
     axios.get(`/api/sessions/${sessionId}/notes`)
       .then(res => setNotesText(res.data.notes || ''))
       .catch(() => {});
@@ -941,10 +1126,16 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 key={action.id}
                 className={`action-item${activeAction === action.id ? ' active' : ''}`}
                 onClick={() => {
-                  if (action.id === 6) {
+                  if (action.id === 7) {
                     window.open(`/report/${sessionId}`, '_blank');
                   } else {
-                    setActiveAction(activeAction === action.id ? null : action.id);
+                    const next = activeAction === action.id ? null : action.id;
+                    setActiveAction(next);
+                    // Vuln Scan — ensure both panels open fully expanded.
+                    if (next === 1) {
+                      setConsoleCollapsed(false);
+                      setActionCollapsed(false);
+                    }
                   }
                 }}
               >
@@ -955,25 +1146,39 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className="sd-console-wrap">
-            {sessionId
-              ? <Console sessionId={sessionId} onSessionOpened={loadMsfSessions} />
-              : <div className="sd-no-session">Invalid session ID</div>
-            }
+          <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
+            <div className="sd-console-toggle-bar">
+              <span className="sd-console-toggle-label">MSF Console</span>
+              <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
+                onClick={() => setConsoleCollapsed(c => !c)}>
+                {consoleCollapsed ? '▲' : '▼'}
+              </button>
+            </div>
+            {!consoleCollapsed && (
+              sessionId
+                ? <Console sessionId={sessionId} onSessionOpened={loadMsfSessions} />
+                : <div className="sd-no-session">Invalid session ID</div>
+            )}
           </div>
 
           {/* ── Vuln scan panel ── */}
           {activeAction === 1 && (
-            <div className="action-panel">
+            <div className={`action-panel${actionCollapsed ? ' sd-panel-collapsed' : ''}`}>
               <div className="action-panel-header">
                 <span className="action-panel-title">
                   Vulnerability Scan
                   {session && <span className="action-panel-target"> — {session.target_host}</span>}
                   {osBadge && <span className="os-badge">{osBadge}</span>}
                 </span>
-                <button className="btn-run-scan" onClick={handleVulnScan} disabled={vulnLoading}>
-                  {vulnLoading ? <><span className="btn-spinner" /> Scanning…</> : 'Run Scan'}
-                </button>
+                <div className="action-panel-header-controls">
+                  <button className="btn-run-scan" onClick={handleVulnScan} disabled={vulnLoading}>
+                    {vulnLoading ? <><span className="btn-spinner" /> Scanning…</> : 'Run Scan'}
+                  </button>
+                  <button className="btn-panel-toggle" title={actionCollapsed ? 'Expand panel' : 'Collapse panel'}
+                    onClick={() => setActionCollapsed(c => !c)}>
+                    {actionCollapsed ? '▲' : '▼'}
+                  </button>
+                </div>
               </div>
               <pre className="action-panel-output" ref={vulnOutputRef}>
                 {vulnError
@@ -1231,8 +1436,13 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             </div>
           )}
 
-          {/* ── Shells panel ── */}
+          {/* ── Searchsploit panel ── */}
           {activeAction === 4 && (
+            <SearchsploitPanel sessionId={sessionId} targetHost={session?.target_host || ''} />
+          )}
+
+          {/* ── Shells panel ── */}
+          {activeAction === 5 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -1331,7 +1541,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Post Exploitation panel ── */}
-          {activeAction === 5 && (
+          {activeAction === 6 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -1487,7 +1697,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Loot panel ── */}
-          {activeAction === 7 && (
+          {activeAction === 8 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -1640,7 +1850,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Notes panel ── */}
-          {activeAction === 8 && (
+          {activeAction === 9 && (
             <div className="action-panel notes-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
