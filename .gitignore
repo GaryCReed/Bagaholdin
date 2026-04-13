@@ -4,7 +4,10 @@ backend/.env
 
 # Go build artifacts
 backend/msf-server
+backend/msf-web
+backend/msf-web-interface
 backend/*.exe
+backend/*.db
 
 # Node / React
 frontend/node_modules/

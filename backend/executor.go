@@ -11,188 +11,232 @@ import (
 	"time"
 )
 
-// SessionExecutor manages a running msfconsole instance for a session
+// SessionExecutor manages a running msfconsole instance for a session.
+// The outputChan, done, and conn map are allocated once and live for the
+// lifetime of the executor.  When msfconsole crashes, spawnProcess is called
+// again: new pipes and goroutines are wired up to the SAME channels so every
+// WebSocket subscriber and the broadcaster stay connected transparently.
 type SessionExecutor struct {
 	SessionID  int
 	TargetHost string
-	cmd        *exec.Cmd
-	stdin      io.WriteCloser
-	stdout     io.ReadCloser
-	stderr     io.ReadCloser
-	mutex      sync.RWMutex
-	running    bool
+
+	// Process state — replaced on each restart; guarded by mutex.
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
+	mutex  sync.RWMutex
+
+	running   bool
+	restartMu sync.Mutex // ensures only one restart runs at a time
+
+	// Lifetime channels — never closed except by Close().
 	outputChan chan string
 	done       chan bool
-	readyChan  chan struct{}
-	readyOnce  sync.Once
 
-	// Fan-out: each connected WebSocket gets its own subscriber channel
+	// Ready signal for the initial startup wait.
+	readyChan chan struct{}
+	readyOnce sync.Once
+
+	// Fan-out: each connected WebSocket gets its own subscriber channel.
 	connMu     sync.RWMutex
 	conns      map[int]chan string
 	nextConnID int
 }
 
-// GlobalExecutors maps session IDs to their executors
+// GlobalExecutors maps session IDs to their executors.
 var (
-	executors    = make(map[int]*SessionExecutor)
-	execMutex    sync.RWMutex
-	startingMap  sync.Map // key: sessionID (int) → chan struct{}, signals startup complete
+	executors   = make(map[int]*SessionExecutor)
+	execMutex   sync.RWMutex
+	startingMap sync.Map // key: sessionID (int) → chan struct{}, signals startup complete
 )
 
-// StartSession initializes a new msfconsole session
+// StartSession allocates a new executor and starts msfconsole for the first time.
 func StartSession(sessionID int, targetHost string) (*SessionExecutor, error) {
-	msfPath := os.Getenv("MSFCONSOLE_PATH")
-	if msfPath == "" {
-		msfPath = "msfconsole"
-	}
-
-	fmt.Printf("[Executor] Starting msfconsole from: %s\n", msfPath)
-
-	cmd := exec.Command(msfPath, "-q")
-
-	// Strip DATABASE_URL from the environment so it doesn't override
-	// msfconsole's own ~/.msf4/database.yml connection settings.
-	filteredEnv := []string{}
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "DATABASE_URL=") {
-			filteredEnv = append(filteredEnv, e)
-		}
-	}
-	// Suppress Ruby warnings
-	cmd.Env = append(filteredEnv, "RUBYOPT=-W0")
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stdin: %w", err)
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout: %w", err)
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stderr: %w", err)
-	}
-
 	executor := &SessionExecutor{
 		SessionID:  sessionID,
 		TargetHost: targetHost,
-		cmd:        cmd,
-		stdin:      stdin,
-		stdout:     stdout,
-		stderr:     stderr,
-		running:    false,
-		outputChan: make(chan string, 100),
+		outputChan: make(chan string, 200),
 		done:       make(chan bool, 1),
 		readyChan:  make(chan struct{}),
 		conns:      make(map[int]chan string),
 	}
 
-	// Start the process
-	if err := cmd.Start(); err != nil {
-		fmt.Printf("[Executor] Failed to start msfconsole: %v\n", err)
-		return nil, fmt.Errorf("failed to start msfconsole: %w", err)
-	}
-
-	fmt.Printf("[Executor] Session %d: msfconsole process started (PID: %d)\n", sessionID, cmd.Process.Pid)
-
-	// Start output readers IMMEDIATELY before any delays
-	go executor.readOutput(stdout, false)
-	go executor.readOutput(stderr, true)
-
-	executor.running = true
-
-	// Monitor process exit
-	go func() {
-		err := cmd.Wait()
-		executor.mutex.Lock()
-		executor.running = false
-		executor.mutex.Unlock()
-		fmt.Printf("[Executor] Session %d process exited with status: %v\n", sessionID, err)
-		if err != nil {
-			executor.outputChan <- fmt.Sprintf("[!] Process exited with error: %v", err)
-		} else {
-			executor.outputChan <- "[*] Process exited successfully"
-		}
-		close(executor.outputChan)
-		executor.done <- true
-		// Remove from global map so the next WebSocket reconnect can spawn a fresh msfconsole.
-		execMutex.Lock()
-		delete(executors, sessionID)
-		execMutex.Unlock()
-	}()
-
-	// Wait for the first output activity (msfconsole emits stderr Ruby init lines quickly),
-	// then give it a short settle period. Falls back to a 30s timeout for slow machines.
-	fmt.Printf("[Executor] Session %d: Waiting for msfconsole to become ready...\n", sessionID)
-	select {
-	case <-executor.readyChan:
-		fmt.Printf("[Executor] Session %d: Activity detected, giving process 300ms to settle\n", sessionID)
-		time.Sleep(300 * time.Millisecond)
-	case <-time.After(30 * time.Second):
-		fmt.Printf("[Executor] Session %d: Timed out waiting for activity\n", sessionID)
-	}
-
-	// Check if process is still running
-	if !executor.running {
-		fmt.Printf("[Executor] Session %d: Process exited prematurely!\n", sessionID)
-		return nil, fmt.Errorf("msfconsole process exited prematurely")
-	}
-
-	fmt.Printf("[Executor] Session %d: Process ready for commands\n", sessionID)
-
-	// Start broadcaster: fan out outputChan to all registered subscriber channels
+	// Start broadcaster before the first process so no output is lost.
 	go executor.broadcast()
+
+	if err := executor.spawnProcess(true); err != nil {
+		close(executor.outputChan) // shut broadcaster down
+		return nil, err
+	}
 
 	return executor, nil
 }
 
-// readOutput reads from stdout/stderr and sends to output channel
+// msfEnv returns the filtered environment for msfconsole.
+func msfEnv() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "DATABASE_URL=") {
+			env = append(env, e)
+		}
+	}
+	return append(env, "RUBYOPT=-W0")
+}
+
+// spawnProcess starts a new msfconsole process and wires it to the executor.
+// If initial is true it also waits for the ready signal and records the pid.
+func (e *SessionExecutor) spawnProcess(initial bool) error {
+	msfPath := os.Getenv("MSFCONSOLE_PATH")
+	if msfPath == "" {
+		msfPath = "msfconsole"
+	}
+
+	fmt.Printf("[Executor] Session %d: launching msfconsole (%s)\n", e.SessionID, msfPath)
+
+	cmd := exec.Command(msfPath, "-q")
+	cmd.Env = msfEnv()
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+
+	fmt.Printf("[Executor] Session %d: msfconsole PID %d\n", e.SessionID, cmd.Process.Pid)
+
+	e.mutex.Lock()
+	e.cmd = cmd
+	e.stdin = stdin
+	e.stdout = stdout
+	e.stderr = stderr
+	e.running = true
+	if !initial {
+		// Reset ready signal for the restart path.
+		e.readyChan = make(chan struct{})
+		e.readyOnce = sync.Once{}
+	}
+	e.mutex.Unlock()
+
+	// Wire up readers to the shared outputChan.
+	go e.readOutput(stdout, false)
+	go e.readOutput(stderr, true)
+
+	// Watch for process exit; restart transparently on unexpected exit.
+	go func(c *exec.Cmd) {
+		exitErr := c.Wait()
+
+		e.mutex.Lock()
+		stillThis := e.cmd == c // guard against a concurrent restart already in progress
+		if stillThis {
+			e.running = false
+		}
+		e.mutex.Unlock()
+
+		if !stillThis {
+			return
+		}
+
+		fmt.Printf("[Executor] Session %d: msfconsole exited (%v) — attempting restart\n", e.SessionID, exitErr)
+		e.outputChan <- "[!] msfconsole crashed — restarting automatically…"
+
+		// Restart with a small back-off; give up after 3 attempts.
+		restarted := false
+		for attempt := 1; attempt <= 3; attempt++ {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+
+			e.restartMu.Lock()
+			err := e.spawnProcess(false)
+			e.restartMu.Unlock()
+
+			if err == nil {
+				e.outputChan <- "[*] msfconsole restarted — you may re-run your commands"
+				restarted = true
+				break
+			}
+			fmt.Printf("[Executor] Session %d: restart attempt %d failed: %v\n", e.SessionID, attempt, err)
+			e.outputChan <- fmt.Sprintf("[!] Restart attempt %d failed: %v", attempt, err)
+		}
+
+		if !restarted {
+			// All restarts failed — shut down cleanly so WebSocket reconnects to a fresh session.
+			e.outputChan <- "[!] Could not restart msfconsole. Reload the page to start a new session."
+			close(e.outputChan)
+			e.done <- true
+			execMutex.Lock()
+			delete(executors, e.SessionID)
+			execMutex.Unlock()
+		}
+	}(cmd)
+
+	// On initial startup: wait for first output activity, then settle.
+	if initial {
+		select {
+		case <-e.readyChan:
+			fmt.Printf("[Executor] Session %d: activity detected, settling 300 ms\n", e.SessionID)
+			time.Sleep(300 * time.Millisecond)
+		case <-time.After(30 * time.Second):
+			fmt.Printf("[Executor] Session %d: timed out waiting for activity\n", e.SessionID)
+		}
+
+		if !e.running {
+			return fmt.Errorf("msfconsole exited prematurely")
+		}
+		fmt.Printf("[Executor] Session %d: ready for commands\n", e.SessionID)
+	}
+
+	return nil
+}
+
+// readOutput reads from stdout/stderr and sends lines to outputChan.
 func (e *SessionExecutor) readOutput(reader io.ReadCloser, isStderr bool) {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Signal ready on first line from either stream (stderr Ruby init lines arrive fast)
+		// Signal ready on first line from either stream.
 		e.readyOnce.Do(func() { close(e.readyChan) })
 
-		// Filter out non-fatal initialization errors from msfconsole
 		if isStderr {
-			// Skip known non-fatal errors
 			if shouldSkipError(line) {
 				continue
 			}
 			e.outputChan <- fmt.Sprintf("[ERROR] %s", line)
 		} else {
-			// Only send non-empty lines
 			if strings.TrimSpace(line) != "" {
 				e.outputChan <- line
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		e.outputChan <- fmt.Sprintf("[!] Read error: %v", err)
+		// Don't log EOF — that's normal on process exit.
+		if !strings.Contains(err.Error(), "file already closed") {
+			e.outputChan <- fmt.Sprintf("[!] Read error: %v", err)
+		}
 	}
 }
 
-// shouldSkipError determines if an stderr line is a non-fatal initialization error
+// shouldSkipError returns true for known non-fatal stderr noise.
 func shouldSkipError(line string) bool {
-	// Filter known non-fatal errors and Ruby initialization warnings
 	skipPatterns := []string{
-		// Terminal control errors (non-fatal, happens with pipes)
 		"stty: 'standard input': Inappropriate ioctl for device",
 		"stty:",
-		
-		// URI parsing errors
 		"URI::InvalidURIError",
 		"from /usr/share/metasploit-framework",
 		"vendor/bundle/ruby",
 		"gems/uri-",
 		"Invalid argument",
-
-		// Ruby gem loading / bundled_gems errors (non-fatal)
 		"bundled_gems.rb",
 		"in `require'",
 		"in `block",
@@ -201,23 +245,19 @@ func shouldSkipError(line string) bool {
 		"/usr/bin/msfconsole",
 		"<main>",
 		"from /",
-
-		// Other known safe warnings
 		"warning",
 		"Warning",
 		"deprecated",
 	}
-
-	for _, pattern := range skipPatterns {
-		if strings.Contains(line, pattern) {
+	for _, p := range skipPatterns {
+		if strings.Contains(line, p) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// ExecuteCommand sends a command to msfconsole
+// ExecuteCommand sends a command to msfconsole's stdin.
 func (e *SessionExecutor) ExecuteCommand(cmd string) error {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -225,35 +265,30 @@ func (e *SessionExecutor) ExecuteCommand(cmd string) error {
 	if !e.running {
 		return fmt.Errorf("session not running")
 	}
-
-	// Add newline if not present
 	if !strings.HasSuffix(cmd, "\n") {
 		cmd += "\n"
 	}
-
 	_, err := io.WriteString(e.stdin, cmd)
 	if err != nil {
 		return fmt.Errorf("failed to write command: %w", err)
 	}
-
 	return nil
 }
 
-// broadcast reads from outputChan and fans out to all registered subscriber channels.
-// When outputChan is closed (msfconsole exited) it closes every subscriber channel.
+// broadcast fans out outputChan to every registered subscriber channel.
+// Runs for the lifetime of the executor; exits only when outputChan is closed.
 func (e *SessionExecutor) broadcast() {
 	for output := range e.outputChan {
 		e.connMu.RLock()
 		for _, ch := range e.conns {
 			select {
 			case ch <- output:
-			default:
-				// slow consumer: drop rather than block the broadcaster
+			default: // slow consumer — drop rather than block
 			}
 		}
 		e.connMu.RUnlock()
 	}
-	// outputChan drained — close all subscriber channels so WebSocket handlers exit cleanly
+	// outputChan closed (terminal failure) — close all subscriber channels.
 	e.connMu.Lock()
 	for id, ch := range e.conns {
 		close(ch)
@@ -262,8 +297,7 @@ func (e *SessionExecutor) broadcast() {
 	e.connMu.Unlock()
 }
 
-// Subscribe registers a new WebSocket connection and returns its ID and a receive-only
-// channel. If the process has already exited the returned channel is pre-closed.
+// Subscribe registers a new WebSocket connection.
 func (e *SessionExecutor) Subscribe() (int, <-chan string) {
 	e.connMu.Lock()
 	defer e.connMu.Unlock()
@@ -286,7 +320,6 @@ func (e *SessionExecutor) Subscribe() (int, <-chan string) {
 }
 
 // Unsubscribe removes a subscriber and closes its channel.
-// Safe to call after the broadcaster has already closed the channel.
 func (e *SessionExecutor) Unsubscribe(id int) {
 	e.connMu.Lock()
 	defer e.connMu.Unlock()
@@ -296,30 +329,25 @@ func (e *SessionExecutor) Unsubscribe(id int) {
 	}
 }
 
-// Close terminates the msfconsole session
+// Close terminates the msfconsole session permanently.
 func (e *SessionExecutor) Close() error {
 	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
 	if !e.running {
+		e.mutex.Unlock()
 		return nil
 	}
-
 	e.running = false
+	stdin := e.stdin
+	cmd := e.cmd
+	e.mutex.Unlock()
 
-	// Send exit command
-	io.WriteString(e.stdin, "exit\n")
-	e.stdin.Close()
-
-	// Give process time to exit gracefully
+	io.WriteString(stdin, "exit\n")
+	stdin.Close()
 	time.Sleep(500 * time.Millisecond)
-
-	// Force kill if still running
-	if e.cmd.ProcessState == nil {
-		e.cmd.Process.Kill()
+	if cmd.ProcessState == nil {
+		cmd.Process.Kill()
 	}
 
-	// Remove from global map
 	execMutex.Lock()
 	delete(executors, e.SessionID)
 	execMutex.Unlock()
@@ -327,22 +355,20 @@ func (e *SessionExecutor) Close() error {
 	return nil
 }
 
-// GetExecutor retrieves an executor for a session ID
+// GetExecutor retrieves an executor for a session ID.
 func GetExecutor(sessionID int) *SessionExecutor {
 	execMutex.RLock()
 	defer execMutex.RUnlock()
 	return executors[sessionID]
 }
 
-// CloseExecutor closes and removes an executor
+// CloseExecutor closes and removes an executor.
 func CloseExecutor(sessionID int) error {
 	execMutex.Lock()
 	executor, exists := executors[sessionID]
 	execMutex.Unlock()
-
 	if !exists {
 		return nil
 	}
-
 	return executor.Close()
 }

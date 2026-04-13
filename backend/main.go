@@ -37,20 +37,22 @@ func main() {
 
 	log.Printf("Using DATABASE_URL: %s", dbURL)
 
-	// Initialize database
+	// Initialize database, falling back to SQLite if PostgreSQL is unavailable.
 	db, err := NewDB(dbURL)
 	if err != nil {
-		log.Printf("Warning: Failed to connect to database: %v", err)
-		log.Println("Please ensure PostgreSQL is running and the database exists.")
-		log.Println("Run: sudo systemctl start postgresql")
-		log.Println("Run: sudo -u postgres createdb msf_web")
-		log.Println("Continuing without database - some features will not work.")
-		db = nil
-	} else {
-		// Run migrations
-		if err := db.Migrate(); err != nil {
-			log.Fatalf("Failed to run migrations: %v", err)
+		log.Printf("Warning: could not connect to %s: %v", dbURL, err)
+		log.Println("Falling back to SQLite (msf_web.db) for persistent storage.")
+		db, err = NewDB("sqlite3://msf_web.db")
+		if err != nil {
+			log.Fatalf("Failed to open SQLite fallback: %v", err)
 		}
+	}
+	if err := db.Migrate(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+	if db.isMemory {
+		log.Println("Running with in-memory store (data will not persist across restarts)")
+	} else {
 		log.Println("Database connected and migrated successfully")
 	}
 
@@ -97,6 +99,8 @@ func main() {
 		r.Get("/sessions/{id}/msf-sessions", handleListMsfSessions(db))
 		r.Post("/sessions/{id}/loot", handleSaveLoot(db))
 		r.Get("/sessions/{id}/loot", handleGetLoot(db))
+		r.Get("/sessions/{id}/notes", handleGetNotes(db))
+		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 	})
 
 	// Serve React SPA: real files are served directly, everything else falls back to index.html
@@ -124,12 +128,6 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 func handleRegister(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
-		if db == nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"error":"Database not available"}`)
-			return
-		}
 
 		var req struct {
 			Username string `json:"username"`
@@ -172,12 +170,6 @@ func handleRegister(db *DB) http.HandlerFunc {
 func handleLogin(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
-		if db == nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"error":"Database not available"}`)
-			return
-		}
 
 		var req struct {
 			Username string `json:"username"`
@@ -334,12 +326,6 @@ func handleGetSessions(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		if db == nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"error":"Database not available"}`)
-			return
-		}
-
 		token := extractToken(r)
 		if token == "" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -375,12 +361,6 @@ func handleGetSessions(db *DB) http.HandlerFunc {
 func handleCreateSession(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
-		if db == nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"error":"Database not available"}`)
-			return
-		}
 
 		token := extractToken(r)
 		claims, err := validateToken(token)
@@ -615,49 +595,26 @@ func handleCVEAnalysis(db *DB) http.HandlerFunc {
 			return
 		}
 
-		// Build the list of target hosts to aggregate CVEs from:
-		// always include this session's host, plus all sibling sessions in the project.
-		targetHosts := []string{session.TargetHost}
-		if session.ProjectID != nil {
-			siblings, err := db.GetProjectSessions(*session.ProjectID, claims.UserID)
-			if err == nil {
-				for _, s := range siblings {
-					if s.TargetHost != session.TargetHost {
-						targetHosts = append(targetHosts, s.TargetHost)
-					}
-				}
-			}
-		}
-
-		// Aggregate CVEs across all hosts; deduplicate by CVE ID, merge module/target lists.
-		type cveInfo struct {
-			modules map[string]struct{}
-			targets []string
-		}
-		cveMap := map[string]*cveInfo{}
-		anyFound := false
-
-		for _, target := range targetHosts {
-			cves, err := parseNmapXML(scanXMLPath(target))
-			if err != nil {
-				continue
-			}
-			anyFound = true
-			for _, cve := range cves {
-				if _, ok := cveMap[cve]; !ok {
-					cveMap[cve] = &cveInfo{modules: map[string]struct{}{}}
-				}
-				cveMap[cve].targets = append(cveMap[cve].targets, target)
-				for _, mod := range findMsfModules(cve) {
-					cveMap[cve].modules[mod] = struct{}{}
-				}
-			}
-		}
-
-		if !anyFound {
+		// Only analyse CVEs from this session's own scan.
+		target := session.TargetHost
+		cves, err := parseNmapXML(scanXMLPath(target))
+		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
 			return
+		}
+
+		type cveInfo struct {
+			modules map[string]struct{}
+		}
+		cveMap := map[string]*cveInfo{}
+		for _, cve := range cves {
+			if _, ok := cveMap[cve]; !ok {
+				cveMap[cve] = &cveInfo{modules: map[string]struct{}{}}
+			}
+			for _, mod := range findMsfModules(cve) {
+				cveMap[cve].modules[mod] = struct{}{}
+			}
 		}
 
 		results := make([]CVEResult, 0, len(cveMap))
@@ -667,13 +624,12 @@ func handleCVEAnalysis(db *DB) http.HandlerFunc {
 				mods = append(mods, mod)
 			}
 			sort.Strings(mods)
-			results = append(results, CVEResult{CVE: cve, Modules: mods, Targets: info.targets})
+			results = append(results, CVEResult{CVE: cve, Modules: mods, Targets: []string{target}})
 		}
 		sort.Slice(results, func(i, j int) bool { return results[i].CVE < results[j].CVE })
 
-		allTargets := strings.Join(targetHosts, ", ")
 		data, _ := encodeJSON(results)
-		fmt.Fprintf(w, `{"cves":%s,"target":%q}`, data, allTargets)
+		fmt.Fprintf(w, `{"cves":%s,"target":%q}`, data, target)
 	}
 }
 
@@ -953,6 +909,71 @@ func handleGetLoot(db *DB) http.HandlerFunc {
 		}
 		data, _ := encodeJSON(doc.Items)
 		fmt.Fprintf(w, `{"items":%s}`, data)
+	}
+}
+
+func notesPath(sessionID int) string {
+	return fmt.Sprintf("/tmp/msf-notes-%d.txt", sessionID)
+}
+
+func handleGetNotes(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+		content, _ := os.ReadFile(notesPath(sessionID))
+		data, _ := encodeJSON(string(content))
+		fmt.Fprintf(w, `{"notes":%s}`, data)
+	}
+}
+
+func handleSaveNotes(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		token := extractToken(r)
+		claims, err := validateToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+		var body struct {
+			Notes string `json:"notes"`
+		}
+		parseJSON(r, &body)
+		if err := os.WriteFile(notesPath(sessionID), []byte(body.Notes), 0o644); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
+			return
+		}
+		fmt.Fprint(w, `{"ok":true}`)
 	}
 }
 

@@ -989,6 +989,90 @@
   font-family: 'Courier New', monospace;
 }
 
+.post-ex-shell-input-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2a2a4a;
+}
+
+.shell-input-field {
+  flex: 1;
+  min-width: 0;
+  background: #0d0d1a;
+  border: 1px solid #3a3a5a;
+  border-radius: 3px;
+  color: #e0e0e0;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.shell-input-field:focus {
+  border-color: #5a5aaa;
+}
+
+.btn-shell-input-toggle {
+  background: transparent;
+  border: 1px solid #3a3a5a;
+  border-radius: 3px;
+  color: #858585;
+  font-size: 13px;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.btn-shell-input-toggle:hover {
+  border-color: #5a5aaa;
+  color: #c0c0c0;
+}
+
+.btn-shell-input-send {
+  background: #2a2a5a;
+  border: 1px solid #4a4a8a;
+  border-radius: 3px;
+  color: #c0c0e0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-shell-input-send:hover:not(:disabled) {
+  background: #3a3a7a;
+  color: #e0e0ff;
+}
+
+.btn-shell-input-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.askpass-set-indicator {
+  font-size: 11px;
+  color: #4caf50;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+.btn-askpass-clear {
+  background: transparent;
+  border: 1px solid #5a2a2a;
+  border-radius: 3px;
+  color: #c07070;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.btn-askpass-clear:hover {
+  background: #3a1a1a;
+  color: #e09090;
+}
+
 /* Section titles */
 .post-ex-section-title {
   font-size: 11px;
@@ -1165,4 +1249,150 @@
   border-top: 1px solid #2a2a2a;
   margin-top: 8px;
   padding-top: 4px;
+}
+
+/* ── Loot panel ─────────────────────────────────────────────────────────── */
+.loot-body {
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loot-section {
+  background: #111120;
+  border: 1px solid #2a2a4a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.loot-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 5px 10px;
+}
+
+.loot-cred  { background: #2a1a1a; color: #e07070; border-bottom: 1px solid #4a2a2a; }
+.loot-sys   { background: #1a1a2a; color: #7090e0; border-bottom: 1px solid #2a2a5a; }
+.loot-user  { background: #1a2a1a; color: #70c070; border-bottom: 1px solid #2a4a2a; }
+.loot-priv  { background: #2a2a1a; color: #d0b060; border-bottom: 1px solid #4a4a2a; }
+.loot-net   { background: #1a2a2a; color: #60c0c0; border-bottom: 1px solid #2a4a4a; }
+.loot-other { background: #1e1e2e; color: #a0a0c0; border-bottom: 1px solid #2a2a4a; }
+
+.loot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.loot-table th {
+  text-align: left;
+  padding: 5px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #585878;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.loot-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #1e1e2e;
+  color: #c0c0d8;
+  vertical-align: top;
+}
+
+.loot-table tr:last-child td { border-bottom: none; }
+
+.loot-source {
+  color: #686888;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.loot-mono {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.loot-ts {
+  color: #505060;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.loot-kv-block {
+  padding: 6px 10px;
+  border-bottom: 1px solid #1e1e2e;
+}
+
+.loot-kv-block:last-child { border-bottom: none; }
+
+.loot-kv-source {
+  font-size: 10px;
+  color: #686888;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.loot-kv-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.loot-kv-key {
+  color: #7878a8;
+  min-width: 110px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.loot-kv-val {
+  color: #c0c0d8;
+  word-break: break-all;
+}
+
+.loot-type-pill {
+  background: #2a2a4a;
+  color: #8888b0;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
+/* ── Notes panel ─────────────────────────────────────────────────────────── */
+.notes-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 400px;
+  background: #0d0d1a;
+  border: none;
+  border-top: 1px solid #2a2a4a;
+  color: #d0d0e8;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.notes-textarea::placeholder {
+  color: #404058;
 }

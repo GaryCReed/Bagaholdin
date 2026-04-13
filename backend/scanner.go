@@ -95,10 +95,19 @@ func getLocalIPs() map[string]bool {
 	return ips
 }
 
-// scanNetwork runs an nmap ping sweep against the given CIDR and returns live hosts,
+// scanNetwork runs an nmap host-discovery sweep against the given CIDR and returns live hosts,
 // excluding the attacker's own IP addresses.
+// -PE/-PP: ICMP echo and timestamp probes.
+// -PS/-PA: TCP SYN and ACK probes to common ports, catching hosts that block ICMP but have
+//          open or filtered ports.
 func scanNetwork(cidr string) ([]ScanResult, error) {
-	cmd := exec.Command("nmap", "-sn", cidr)
+	cmd := exec.Command("nmap", "-sn",
+		"-PE", "-PP",
+		"-PS21,22,23,25,53,80,110,443,445,3389,8080,8443",
+		"-PA80,443",
+		"-T4",
+		cidr,
+	)
 	out, err := cmd.Output()
 	if err != nil && len(out) == 0 {
 		return nil, err
