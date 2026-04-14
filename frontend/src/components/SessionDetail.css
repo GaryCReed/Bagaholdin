@@ -2223,3 +2223,210 @@
 .hc-line { color: #888; padding: 1px 0; }
 .hc-line-crack { color: #6ad06a; }
 .hc-line-status { color: #70a0d0; }
+
+/* ── SqlMap Panel ── */
+.sm-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 960px;
+  overflow-y: auto;
+}
+
+.sm-section {
+  background: #12181f;
+  border: 1px solid #1e2a38;
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sm-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5a8a6a;
+  margin-bottom: 2px;
+}
+
+.sm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sm-label {
+  font-size: 12px;
+  color: #8a9aaa;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.sm-select {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 5px 8px;
+  min-width: 120px;
+}
+
+.sm-select:focus { outline: none; border-color: #3a7a5a; }
+
+.sm-text-input {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 5px 8px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.sm-text-input:focus { outline: none; border-color: #3a7a5a; }
+
+.sm-num-input {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 5px 6px;
+  width: 70px;
+  text-align: center;
+}
+
+.sm-num-input:focus { outline: none; border-color: #3a7a5a; }
+
+.sm-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 16px;
+}
+
+.sm-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #9aaabb;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sm-check input[type="checkbox"] {
+  accent-color: #3a7a5a;
+  cursor: pointer;
+}
+
+/* Technique checkboxes — 2 per row */
+.sm-technique-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px 24px;
+}
+
+.sm-tech-key {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  color: #5aca8a;
+  margin-right: 2px;
+}
+
+/* Status */
+.sm-status-running {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8a9aaa;
+}
+
+.sm-status-done {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5aca8a;
+}
+
+/* Findings */
+.sm-found-box {
+  background: #0e2018;
+  border: 1px solid #3a7a5a;
+  border-radius: 5px;
+  padding: 10px 12px;
+}
+
+.sm-found-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5aca8a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.sm-found-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sm-found-table th {
+  text-align: left;
+  color: #4a7a6a;
+  padding: 3px 8px;
+  border-bottom: 1px solid #1e3a2a;
+  font-weight: 600;
+}
+
+.sm-found-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #0e2018;
+  font-family: 'Courier New', monospace;
+  color: #a8e8b8;
+  word-break: break-all;
+}
+
+.sm-found-table tr:last-child td { border-bottom: none; }
+
+/* Output */
+.sm-output-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sm-output-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5a7a8a;
+}
+
+.sm-output {
+  background: #080d14;
+  border: 1px solid #1a2530;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  max-height: 340px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sm-line        { color: #7a8a9a; padding: 1px 0; }
+.sm-line-info   { color: #6090b0; }
+.sm-line-found  { color: #5aca8a; font-weight: 600; }
+.sm-line-warn   { color: #c0902a; }
+.sm-line-error  { color: #ca5a5a; }

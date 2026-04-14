@@ -87,6 +87,7 @@ const ACTIONS: ActionItem[] = [
   { id: 10, label: "10. Wifi Handshake's" },
   { id: 11, label: '11. Hashcat' },
   { id: 12, label: '12. Bruteforce' },
+  { id: 13, label: '13. SqlMap' },
 ];
 
 // ── Quick command buttons ──
@@ -1347,6 +1348,473 @@ const SERVICES = [
   { group: 'Database', values: ['mysql','postgres','mssql','oracle-listener'] },
 ];
 
+// ── SqlMap Panel ──────────────────────────────────────────────────────────────
+
+interface SqlmapFinding { type: string; value: string; }
+
+const DBMS_OPTIONS = ['', 'mysql', 'postgresql', 'mssql', 'oracle', 'sqlite', 'access', 'db2', 'firebird', 'hsqldb', 'informix', 'sybase'];
+
+const TECHNIQUES = [
+  { key: 'B', label: 'Boolean-based blind' },
+  { key: 'E', label: 'Error-based' },
+  { key: 'U', label: 'Union-based' },
+  { key: 'S', label: 'Stacked queries' },
+  { key: 'T', label: 'Time-based blind' },
+  { key: 'Q', label: 'Inline queries' },
+];
+
+function SqlmapPanel({ sessionId }: { sessionId: number }) {
+  // Target
+  const [url, setUrl] = useState('');
+  const [data, setData] = useState('');
+  const [cookie, setCookie] = useState('');
+  const [method, setMethod] = useState('GET');
+  const [headers, setHeaders] = useState('');
+  const [requestFile, setRequestFile] = useState('');
+  const [useRequestFile, setUseRequestFile] = useState(false);
+
+  // Injection
+  const [testParam, setTestParam] = useState('');
+  const [dbms, setDbms] = useState('');
+  const [prefix, setPrefix] = useState('');
+  const [suffix, setSuffix] = useState('');
+  const [tamper, setTamper] = useState('');
+  const [techniques, setTechniques] = useState<Set<string>>(new Set(['B','E','U','S','T','Q']));
+
+  // Detection
+  const [level, setLevel] = useState(1);
+  const [risk, setRisk] = useState(1);
+  const [smart, setSmart] = useState(false);
+  const [forms, setForms] = useState(false);
+
+  // Enumeration
+  const [getBanner, setGetBanner] = useState(false);
+  const [getCurrentUser, setGetCurrentUser] = useState(false);
+  const [getCurrentDB, setGetCurrentDB] = useState(false);
+  const [getIsDBA, setGetIsDBA] = useState(false);
+  const [getUsers, setGetUsers] = useState(false);
+  const [getPasswords, setGetPasswords] = useState(false);
+  const [getDatabases, setGetDatabases] = useState(true);
+  const [getTables, setGetTables] = useState(false);
+  const [getColumns, setGetColumns] = useState(false);
+  const [dumpTable, setDumpTable] = useState(false);
+  const [dumpAll, setDumpAll] = useState(false);
+  const [schema, setSchema] = useState(false);
+  const [database, setDatabase] = useState('');
+  const [table, setTable] = useState('');
+  const [column, setColumn] = useState('');
+
+  // Request options
+  const [randomAgent, setRandomAgent] = useState(false);
+  const [proxy, setProxy] = useState('');
+  const [useTor, setUseTor] = useState(false);
+  const [forceSSL, setForceSSL] = useState(false);
+  const [delay, setDelay] = useState(0);
+  const [timeoutSecs, setTimeoutSecs] = useState(30);
+  const [retries, setRetries] = useState(3);
+  const [threads, setThreads] = useState(1);
+
+  // General
+  const [verbosity, setVerbosity] = useState(1);
+  const [flushSession, setFlushSession] = useState(false);
+  const [parseErrors, setParseErrors] = useState(false);
+  const [crawlDepth, setCrawlDepth] = useState(0);
+  const [customArgs, setCustomArgs] = useState('');
+
+  // Job state
+  const [running, setRunning] = useState(false);
+  const [output, setOutput] = useState<string[]>([]);
+  const [found, setFound] = useState<SqlmapFinding[]>([]);
+  const [jobDone, setJobDone] = useState(false);
+  const [jobError, setJobError] = useState('');
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Pre-fill URL from session host
+  useEffect(() => {
+    const sid = Number(sessionId);
+    if (!sid) return;
+    axios.get(`/api/sessions/${sid}`).then(r => {
+      const host = r.data?.target_host;
+      if (host) setUrl(`http://${host}/`);
+    }).catch(() => {});
+  }, [sessionId]);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await axios.get(`/api/sessions/${sessionId}/sqlmap`);
+        const { status, output: out, found: f, error: e } = r.data;
+        setOutput(out || []);
+        setFound(f || []);
+        setJobError(e || '');
+        if (status === 'done') {
+          stopPolling();
+          setRunning(false);
+          setJobDone(true);
+        }
+      } catch { stopPolling(); setRunning(false); }
+    }, 2000);
+  };
+
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [output]);
+
+  useEffect(() => () => stopPolling(), []);
+
+  const toggleTechnique = (key: string) => {
+    setTechniques(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) { if (next.size > 1) next.delete(key); }
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleStart = async () => {
+    setRunning(true);
+    setJobDone(false);
+    setJobError('');
+    setOutput([]);
+    setFound([]);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/sqlmap`, {
+        url: useRequestFile ? '' : url,
+        data, cookie,
+        method: method !== 'GET' ? method : '',
+        headers,
+        request_file: useRequestFile ? requestFile : '',
+        test_param: testParam,
+        dbms, prefix, suffix, tamper,
+        technique: Array.from(techniques).sort().join(''),
+        level, risk, smart, forms,
+        get_banner: getBanner,
+        get_current_user: getCurrentUser,
+        get_current_db: getCurrentDB,
+        get_is_dba: getIsDBA,
+        get_users: getUsers,
+        get_passwords: getPasswords,
+        get_databases: getDatabases,
+        get_tables: getTables,
+        get_columns: getColumns,
+        dump_table: dumpTable,
+        dump_all: dumpAll,
+        schema,
+        database, table, column,
+        random_agent: randomAgent,
+        proxy, use_tor: useTor, force_ssl: forceSSL,
+        delay, timeout: timeoutSecs, retries, threads,
+        verbosity, flush_session: flushSession,
+        parse_errors: parseErrors,
+        crawl_depth: crawlDepth,
+        custom_args: customArgs,
+      });
+      startPolling();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to start';
+      setJobError(msg);
+      setRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/sqlmap`); } catch { /* ignore */ }
+    stopPolling();
+    setRunning(false);
+  };
+
+  const lineClass = (line: string) => {
+    if (line.includes('[+]') || line.includes('injectable') || line.includes('SQL injection')) return 'sm-line sm-line-found';
+    if (line.includes('[WARNING]')) return 'sm-line sm-line-warn';
+    if (line.includes('[ERROR]') || line.includes('[CRITICAL]')) return 'sm-line sm-line-error';
+    if (line.includes('[INFO]')) return 'sm-line sm-line-info';
+    return 'sm-line';
+  };
+
+  const findingBadge = (type: string) => {
+    switch (type) {
+      case 'injection': return '🎯';
+      case 'database': return '🗄';
+      case 'table':    return '📋';
+      case 'hash':     return '🔑';
+      case 'dump':     return '📄';
+      default:         return '•';
+    }
+  };
+
+  return (
+    <div className="sm-panel">
+
+      {/* Target */}
+      <div className="sm-section">
+        <div className="sm-section-title">Target</div>
+        <div className="sm-row">
+          <label className="sm-check">
+            <input type="checkbox" checked={useRequestFile} onChange={e => setUseRequestFile(e.target.checked)} />
+            Load from request file
+          </label>
+        </div>
+        {useRequestFile ? (
+          <div className="sm-row">
+            <span className="sm-label">Request file</span>
+            <input className="sm-text-input" value={requestFile} onChange={e => setRequestFile(e.target.value)}
+              placeholder="/path/to/request.txt" />
+          </div>
+        ) : (
+          <>
+            <div className="sm-row">
+              <span className="sm-label">URL</span>
+              <input className="sm-text-input" value={url} onChange={e => setUrl(e.target.value)}
+                placeholder="http://target/page?id=1" />
+            </div>
+            <div className="sm-row">
+              <span className="sm-label">POST data</span>
+              <input className="sm-text-input" value={data} onChange={e => setData(e.target.value)}
+                placeholder="user=foo&pass=bar" />
+            </div>
+            <div className="sm-row">
+              <span className="sm-label">Cookie</span>
+              <input className="sm-text-input" value={cookie} onChange={e => setCookie(e.target.value)}
+                placeholder="PHPSESSID=abc123" />
+            </div>
+            <div className="sm-row">
+              <span className="sm-label">Method</span>
+              <select className="sm-select" value={method} onChange={e => setMethod(e.target.value)}>
+                {['GET','POST','PUT','DELETE','PATCH'].map(m => <option key={m}>{m}</option>)}
+              </select>
+              <label className="sm-check" style={{marginLeft:8}}>
+                <input type="checkbox" checked={forms} onChange={e => setForms(e.target.checked)} />
+                Auto-detect forms
+              </label>
+            </div>
+            <div className="sm-row">
+              <span className="sm-label">Extra headers</span>
+              <input className="sm-text-input" value={headers} onChange={e => setHeaders(e.target.value)}
+                placeholder="X-Forwarded-For: 127.0.0.1" />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Injection */}
+      <div className="sm-section">
+        <div className="sm-section-title">Injection</div>
+        <div className="sm-row">
+          <span className="sm-label">Test param</span>
+          <input className="sm-text-input" value={testParam} onChange={e => setTestParam(e.target.value)}
+            placeholder="id (leave blank to auto-detect)" style={{maxWidth:200}} />
+          <span className="sm-label" style={{marginLeft:16}}>Force DBMS</span>
+          <select className="sm-select" value={dbms} onChange={e => setDbms(e.target.value)} style={{maxWidth:160}}>
+            {DBMS_OPTIONS.map(d => <option key={d} value={d}>{d || '— auto —'}</option>)}
+          </select>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Techniques</span>
+          <div className="sm-technique-grid">
+            {TECHNIQUES.map(t => (
+              <label key={t.key} className="sm-check">
+                <input type="checkbox" checked={techniques.has(t.key)}
+                  onChange={() => toggleTechnique(t.key)} />
+                <span className="sm-tech-key">{t.key}</span> {t.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Prefix</span>
+          <input className="sm-text-input" value={prefix} onChange={e => setPrefix(e.target.value)}
+            placeholder="injection prefix" style={{maxWidth:160}} />
+          <span className="sm-label" style={{marginLeft:12}}>Suffix</span>
+          <input className="sm-text-input" value={suffix} onChange={e => setSuffix(e.target.value)}
+            placeholder="injection suffix" style={{maxWidth:160}} />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Tamper</span>
+          <input className="sm-text-input" value={tamper} onChange={e => setTamper(e.target.value)}
+            placeholder="between,space2comment" />
+        </div>
+      </div>
+
+      {/* Detection */}
+      <div className="sm-section">
+        <div className="sm-section-title">Detection</div>
+        <div className="sm-row">
+          <span className="sm-label">Level (1–5)</span>
+          <select className="sm-select" value={level} onChange={e => setLevel(Number(e.target.value))} style={{maxWidth:80}}>
+            {[1,2,3,4,5].map(n => <option key={n}>{n}</option>)}
+          </select>
+          <span className="sm-label" style={{marginLeft:16}}>Risk (1–3)</span>
+          <select className="sm-select" value={risk} onChange={e => setRisk(Number(e.target.value))} style={{maxWidth:80}}>
+            {[1,2,3].map(n => <option key={n}>{n}</option>)}
+          </select>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={smart} onChange={e => setSmart(e.target.checked)} />
+            Smart (heuristic only)
+          </label>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={parseErrors} onChange={e => setParseErrors(e.target.checked)} />
+            Parse errors
+          </label>
+        </div>
+      </div>
+
+      {/* Enumeration */}
+      <div className="sm-section">
+        <div className="sm-section-title">Enumeration</div>
+        <div className="sm-checkbox-grid">
+          {[
+            { label: 'Banner',        val: getBanner,      set: setGetBanner },
+            { label: 'Current user',  val: getCurrentUser, set: setGetCurrentUser },
+            { label: 'Current DB',    val: getCurrentDB,   set: setGetCurrentDB },
+            { label: 'Is DBA',        val: getIsDBA,       set: setGetIsDBA },
+            { label: 'Users',         val: getUsers,       set: setGetUsers },
+            { label: 'Password hashes', val: getPasswords, set: setGetPasswords },
+            { label: 'Databases',     val: getDatabases,   set: setGetDatabases },
+            { label: 'Tables',        val: getTables,      set: setGetTables },
+            { label: 'Columns',       val: getColumns,     set: setGetColumns },
+            { label: 'Schema',        val: schema,         set: setSchema },
+            { label: 'Dump table',    val: dumpTable,      set: setDumpTable },
+            { label: 'Dump all',      val: dumpAll,        set: setDumpAll },
+          ].map(item => (
+            <label key={item.label} className="sm-check">
+              <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
+              {item.label}
+            </label>
+          ))}
+        </div>
+        <div className="sm-row" style={{marginTop:6}}>
+          <span className="sm-label">Database (-D)</span>
+          <input className="sm-text-input" value={database} onChange={e => setDatabase(e.target.value)}
+            placeholder="filter by database" style={{maxWidth:180}} />
+          <span className="sm-label" style={{marginLeft:12}}>Table (-T)</span>
+          <input className="sm-text-input" value={table} onChange={e => setTable(e.target.value)}
+            placeholder="filter by table" style={{maxWidth:160}} />
+          <span className="sm-label" style={{marginLeft:12}}>Column (-C)</span>
+          <input className="sm-text-input" value={column} onChange={e => setColumn(e.target.value)}
+            placeholder="filter by column" style={{maxWidth:140}} />
+        </div>
+      </div>
+
+      {/* Request Options */}
+      <div className="sm-section">
+        <div className="sm-section-title">Request Options</div>
+        <div className="sm-row">
+          <label className="sm-check">
+            <input type="checkbox" checked={randomAgent} onChange={e => setRandomAgent(e.target.checked)} />
+            Random User-Agent
+          </label>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={useTor} onChange={e => setUseTor(e.target.checked)} />
+            Use Tor
+          </label>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={forceSSL} onChange={e => setForceSSL(e.target.checked)} />
+            Force SSL
+          </label>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Proxy</span>
+          <input className="sm-text-input" value={proxy} onChange={e => setProxy(e.target.value)}
+            placeholder="http://127.0.0.1:8080" style={{maxWidth:240}} />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Delay (s)</span>
+          <input className="sm-num-input" type="number" min={0} step={0.5} value={delay}
+            onChange={e => setDelay(Number(e.target.value))} />
+          <span className="sm-label" style={{marginLeft:12}}>Timeout</span>
+          <input className="sm-num-input" type="number" min={1} value={timeoutSecs}
+            onChange={e => setTimeoutSecs(Number(e.target.value))} />
+          <span className="sm-label" style={{marginLeft:12}}>Retries</span>
+          <input className="sm-num-input" type="number" min={0} value={retries}
+            onChange={e => setRetries(Number(e.target.value))} />
+          <span className="sm-label" style={{marginLeft:12}}>Threads</span>
+          <input className="sm-num-input" type="number" min={1} max={10} value={threads}
+            onChange={e => setThreads(Number(e.target.value))} />
+        </div>
+      </div>
+
+      {/* General */}
+      <div className="sm-section">
+        <div className="sm-section-title">General</div>
+        <div className="sm-row">
+          <span className="sm-label">Verbosity (0–6)</span>
+          <select className="sm-select" value={verbosity} onChange={e => setVerbosity(Number(e.target.value))} style={{maxWidth:80}}>
+            {[0,1,2,3,4,5,6].map(n => <option key={n}>{n}</option>)}
+          </select>
+          <span className="sm-label" style={{marginLeft:16}}>Crawl depth</span>
+          <input className="sm-num-input" type="number" min={0} max={10} value={crawlDepth}
+            onChange={e => setCrawlDepth(Number(e.target.value))} title="0 = disabled" />
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={flushSession} onChange={e => setFlushSession(e.target.checked)} />
+            Flush session
+          </label>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Custom args</span>
+          <input className="sm-text-input" value={customArgs} onChange={e => setCustomArgs(e.target.value)}
+            placeholder="--extra-flags ..." />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="sm-row" style={{gap:12, alignItems:'center'}}>
+        {!running ? (
+          <button className="btn-run-attack" onClick={handleStart}>▶ Run SqlMap</button>
+        ) : (
+          <button className="btn-stop-attack" onClick={handleStop}>■ Stop</button>
+        )}
+        {running && <span className="sm-status-running"><span className="btn-spinner" /> Running…</span>}
+        {jobDone && !running && <span className="sm-status-done">Done</span>}
+        {jobError && <span className="bf-error" style={{flex:1}}>{jobError}</span>}
+      </div>
+
+      {/* Findings */}
+      {found.length > 0 && (
+        <div className="sm-found-box">
+          <div className="sm-found-title">Findings ({found.length})</div>
+          <table className="sm-found-table">
+            <thead>
+              <tr><th>Type</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {found.map((f, i) => (
+                <tr key={i}>
+                  <td>{findingBadge(f.type)} {f.type}</td>
+                  <td>{f.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Output */}
+      {output.length > 0 && (
+        <div className="sm-output-wrap">
+          <div className="sm-output-title">Output</div>
+          <div className="sm-output" ref={outputRef}>
+            {output.map((line, i) => (
+              <div key={i} className={lineClass(line)}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ── Bruteforce Panel ──────────────────────────────────────────────────────────
+
 interface WordlistEntry { label: string; path: string; group: string; }
 interface FoundCred { login: string; password: string; host: string; port: number; service: string; }
 
@@ -2231,7 +2699,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -3022,6 +3490,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 </span>
               </div>
               <BruteforcePanel sessionId={sessionId} />
+            </div>
+          )}
+
+          {/* ── SqlMap panel ── */}
+          {activeAction === 13 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  SqlMap
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <SqlmapPanel sessionId={sessionId} />
             </div>
           )}
 

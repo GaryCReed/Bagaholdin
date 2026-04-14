@@ -113,6 +113,10 @@ func main() {
 		r.Post("/sessions/{id}/hashcat", handleStartHashcat(db))
 		r.Get("/sessions/{id}/hashcat", handleGetHashcat(db))
 		r.Delete("/sessions/{id}/hashcat", handleStopHashcat(db))
+		// SqlMap
+		r.Post("/sessions/{id}/sqlmap", handleStartSqlmap(db))
+		r.Get("/sessions/{id}/sqlmap", handleGetSqlmap(db))
+		r.Delete("/sessions/{id}/sqlmap", handleStopSqlmap(db))
 		// WiFi handshake capture
 		r.Get("/wifi/interfaces", handleGetWifiInterfaces())
 		r.Post("/wifi/monitor", handleEnableMonitor())
