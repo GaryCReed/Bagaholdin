@@ -1504,14 +1504,10 @@
   text-decoration: none;
   font-family: 'Courier New', monospace;
   font-size: 11px;
+  word-break: break-all;
 }
 
 .ssp-edb-link:hover {
   color: #e0b870;
   text-decoration: underline;
-}
-
-.ssp-path {
-  color: #686888;
-  font-size: 11px;
 }

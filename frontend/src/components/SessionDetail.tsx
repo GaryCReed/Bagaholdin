@@ -488,24 +488,23 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
     <div className="ssp-results">
       <div className="ssp-count">{results.length} result{results.length !== 1 ? 's' : ''} — {label}</div>
       <table className="loot-table ssp-table">
-        <thead><tr><th>Title</th><th>Type</th><th>Platform</th><th>EDB-ID</th><th>Service</th><th>Path</th></tr></thead>
+        <thead><tr><th>Title</th><th>Type</th><th>Platform</th><th>Service</th><th>Exploit-DB</th></tr></thead>
         <tbody>
           {results.map((r, i) => (
             <tr key={i}>
               <td>{r.title}</td>
               <td><span className="ssp-type-pill">{r.type}</span></td>
               <td>{r.platform}</td>
+              <td className="ssp-query-cell">{r.query}</td>
               <td>
                 {r.edb_id && (
                   <a className="ssp-edb-link"
                     href={`https://www.exploit-db.com/exploits/${r.edb_id}`}
                     target="_blank" rel="noreferrer">
-                    {r.edb_id}
+                    {`https://www.exploit-db.com/exploits/${r.edb_id}`}
                   </a>
                 )}
               </td>
-              <td className="ssp-query-cell">{r.query}</td>
-              <td className="loot-mono ssp-path">{r.path}</td>
             </tr>
           ))}
         </tbody>
@@ -1722,7 +1721,23 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
               {!lootLoading && lootItems.length > 0 && (
                 <div className="loot-body">
-                  {/* Credentials */}
+                  {/* Session Credentials */}
+                  {lootItems.filter(i => i.type === 'session_credential').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-cred">Session Credentials</div>
+                      <table className="loot-table">
+                        <thead><tr><th>Username</th><th>Password</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'session_credential').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td className="loot-mono">{f.username || '—'}</td><td className="loot-mono">{f.password || '—'}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Credentials (hashdump / mimipenguin / lsa / cachedump) */}
                   {lootItems.filter(i => i.type === 'credential').length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-cred">Credentials</div>
@@ -1828,10 +1843,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   )}
 
                   {/* Other */}
-                  {lootItems.filter(i => !['credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
+                  {lootItems.filter(i => !['session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-other">Other</div>
-                      {lootItems.filter(i => !['credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
+                      {lootItems.filter(i => !['session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
                         <div key={idx} className="loot-kv-block">
                           <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
                           {(item.fields||[]).map((f:any) => (

@@ -175,6 +175,10 @@ func handleCommandWebSocket(w http.ResponseWriter, r *http.Request, db *DB) {
 						Status: "new_session",
 						Output: output,
 					})
+					// Save the credentials that were used to open this session to loot.
+					if u, p := executor.LastCredentials(); u != "" || p != "" {
+						go AppendSessionCredential(executor.SessionID, executor.TargetHost, u, p)
+					}
 				}
 			}
 		}

@@ -59,6 +59,44 @@ func saveLootDocument(doc *LootDocument) error {
 		append([]byte(xml.Header), data...), 0644)
 }
 
+// AppendSessionCredential saves a username/password pair used to open a successful MSF
+// session.  It deduplicates by (username, password) so re-runs don't create duplicates.
+func AppendSessionCredential(sessionID int, target, username, password string) error {
+	if username == "" && password == "" {
+		return nil
+	}
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	// Dedup: skip if an identical credential entry already exists.
+	for _, item := range doc.Items {
+		if item.Type != "session_credential" {
+			continue
+		}
+		uMatch, pMatch := false, false
+		for _, f := range item.Fields {
+			if f.Name == "username" && f.Value == username {
+				uMatch = true
+			}
+			if f.Name == "password" && f.Value == password {
+				pMatch = true
+			}
+		}
+		if uMatch && pMatch {
+			return nil // already recorded
+		}
+	}
+	ts := time.Now().UTC().Format(time.RFC3339)
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "session_credential",
+		Source:    "msf_session_open",
+		Timestamp: ts,
+		Fields:    lootFields("username", username, "password", password),
+	})
+	return saveLootDocument(doc)
+}
+
 // AppendLoot parses cmd+output for useful loot and appends to the session's loot.xml.
 func AppendLoot(sessionID int, target, cmd, output string) error {
 	items := extractLoot(cmd, output)

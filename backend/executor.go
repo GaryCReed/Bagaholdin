@@ -42,6 +42,11 @@ type SessionExecutor struct {
 	connMu     sync.RWMutex
 	conns      map[int]chan string
 	nextConnID int
+
+	// Last credentials set via "set USERNAME/PASSWORD" — captured for loot on session open.
+	credMu       sync.Mutex
+	lastUsername string
+	lastPassword string
 }
 
 // GlobalExecutors maps session IDs to their executors.
@@ -258,6 +263,8 @@ func shouldSkipError(line string) bool {
 }
 
 // ExecuteCommand sends a command to msfconsole's stdin.
+// It also tracks the last USERNAME/PASSWORD set so they can be saved to loot
+// when a new MSF session is opened.
 func (e *SessionExecutor) ExecuteCommand(cmd string) error {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -265,6 +272,26 @@ func (e *SessionExecutor) ExecuteCommand(cmd string) error {
 	if !e.running {
 		return fmt.Errorf("session not running")
 	}
+
+	// Track credentials set via "set <key> <value>" (case-insensitive key).
+	trimmed := strings.TrimSpace(cmd)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "set ") {
+		parts := strings.Fields(trimmed)
+		if len(parts) >= 3 {
+			key := strings.ToLower(parts[1])
+			val := parts[2]
+			e.credMu.Lock()
+			switch key {
+			case "username", "user", "smbuser", "ftpuser", "db_user", "username_file":
+				e.lastUsername = val
+			case "password", "pass", "smbpass", "ftppass", "db_pass", "password_file":
+				e.lastPassword = val
+			}
+			e.credMu.Unlock()
+		}
+	}
+
 	if !strings.HasSuffix(cmd, "\n") {
 		cmd += "\n"
 	}
@@ -273,6 +300,13 @@ func (e *SessionExecutor) ExecuteCommand(cmd string) error {
 		return fmt.Errorf("failed to write command: %w", err)
 	}
 	return nil
+}
+
+// LastCredentials returns the most recently set username and password.
+func (e *SessionExecutor) LastCredentials() (username, password string) {
+	e.credMu.Lock()
+	defer e.credMu.Unlock()
+	return e.lastUsername, e.lastPassword
 }
 
 // broadcast fans out outputChan to every registered subscriber channel.

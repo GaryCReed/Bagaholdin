@@ -20,9 +20,10 @@ away from that tab or page
 
 Firewalls and scans, searchsploit
 
-Need to add any usernames and passwords used for successful msf session creation to loot
-
-
+SQLMap
+Dirb
+hashcat pipeline
+bruteforce logins
 
 sudo -l
 sudo: a terminal is required to read the password; either use the -S option to read from standard input
