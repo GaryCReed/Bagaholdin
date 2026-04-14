@@ -2295,7 +2295,7 @@ function BruteforcePanel({ sessionId }: { sessionId: number }) {
   const [useSSL,        setUseSSL]        = useState(false);
   const [loopUsers,     setLoopUsers]     = useState(false);
   const [verbose,       setVerbose]       = useState(true);
-  const [tasks,         setTasks]         = useState(16);
+  const [tasks,         setTasks]         = useState(1);
   const [timeout,       setTimeout_]      = useState(32);
   const [port,          setPort]          = useState(0);
   const [formURL,       setFormURL]       = useState('/login');

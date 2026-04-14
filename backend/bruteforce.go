@@ -142,7 +142,7 @@ func buildHydraArgs(target string, req BruteforceRequest, outFile string) ([]str
 
 	tasks := req.Tasks
 	if tasks <= 0 {
-		tasks = 16
+		tasks = 1
 	}
 	args = append(args, "-t", strconv.Itoa(tasks))
 
@@ -243,15 +243,19 @@ func runHydra(sessionID int, target string, req BruteforceRequest, db *DB) {
 	readStream := func(r interface{ Scan() bool; Text() string }) {
 		for r.Scan() {
 			line := r.Text()
+			var newCred *FoundCred
 			job.mu.Lock()
 			job.output = append(job.output, line)
 			if fc := parseHydraLine(line); fc != nil {
 				job.found = append(job.found, *fc)
-				// Save to loot outside the job mutex to avoid deadlock with lootMu.
-				cred := *fc
-				go AppendBruteforceCredential(sessionID, target, cred.Login, cred.Password, cred.Service)
+				cp := *fc
+				newCred = &cp
 			}
 			job.mu.Unlock()
+			// Save synchronously outside the job mutex so lootMu is always acquired.
+			if newCred != nil {
+				AppendBruteforceCredential(sessionID, target, newCred.Login, newCred.Password, newCred.Service)
+			}
 		}
 	}
 
