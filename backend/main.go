@@ -108,6 +108,16 @@ func main() {
 		r.Get("/sessions/{id}/bruteforce", handleGetBruteforce(db))
 		r.Delete("/sessions/{id}/bruteforce", handleStopBruteforce(db))
 		r.Get("/wordlists", handleGetWordlists())
+		// WiFi handshake capture
+		r.Get("/wifi/interfaces", handleGetWifiInterfaces())
+		r.Post("/wifi/monitor", handleEnableMonitor())
+		r.Delete("/wifi/monitor", handleDisableMonitor())
+		r.Post("/sessions/{id}/wifi/scan", handleStartWifiScan(db))
+		r.Get("/sessions/{id}/wifi/scan", handleGetWifiScan(db))
+		r.Delete("/sessions/{id}/wifi/scan", handleStopWifiScan(db))
+		r.Post("/sessions/{id}/wifi/capture", handleStartWifiCapture(db))
+		r.Get("/sessions/{id}/wifi/capture", handleGetWifiCapture(db))
+		r.Delete("/sessions/{id}/wifi/capture", handleStopWifiCapture(db))
 	})
 
 	// Serve React SPA: real files are served directly, everything else falls back to index.html

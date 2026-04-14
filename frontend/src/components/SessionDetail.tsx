@@ -84,6 +84,7 @@ const ACTIONS: ActionItem[] = [
   { id: 8, label: '8. Loot' },
   { id: 9, label: '9. Notes' },
   { type: 'divider', label: 'Password Attacks' },
+  { id: 10, label: "10. Wifi Handshake's" },
   { id: 12, label: '12. Bruteforce' },
 ];
 
@@ -581,6 +582,385 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
           <ResultTable results={manualResults} label={`results for "${manualQuery}"`} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Wifi Handshake panel ──────────────────────────────────────────────────────
+
+interface WifiAP {
+  bssid: string;
+  essid: string;
+  channel: number;
+  power: number;
+  privacy: string;
+  cipher: string;
+  auth: string;
+  beacons: number;
+}
+
+function WifiPanel({ sessionId }: { sessionId: number }) {
+  // Adapter / monitor mode
+  const [interfaces,     setInterfaces]     = useState<string[]>([]);
+  const [selIface,       setSelIface]        = useState('');
+  const [monIface,       setMonIface]        = useState('');
+  const [monitorEnabled, setMonitorEnabled]  = useState(false);
+  const [monitorLoading, setMonitorLoading]  = useState(false);
+  const [monitorOutput,  setMonitorOutput]   = useState('');
+
+  // AP scan
+  const [scanning,       setScanning]        = useState(false);
+  const [aps,            setAps]             = useState<WifiAP[]>([]);
+  const [scanError,      setScanError]       = useState('');
+  const [band,           setBand]            = useState('');
+  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Selection
+  const [selected,       setSelected]        = useState<Set<string>>(new Set());
+
+  // Capture
+  const [capturing,      setCapturing]       = useState(false);
+  const [captureOutput,  setCaptureOutput]   = useState<string[]>([]);
+  const [handshakes,     setHandshakes]      = useState<string[]>([]);
+  const [deauthCount,    setDeauthCount]     = useState(10);
+  const [deauthRepeat,   setDeauthRepeat]    = useState(true);
+  const capPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef   = useRef<HTMLDivElement>(null);
+
+  // Load interfaces on mount
+  useEffect(() => {
+    axios.get('/api/wifi/interfaces')
+      .then(res => {
+        const ifaces: string[] = res.data.interfaces || [];
+        setInterfaces(ifaces);
+        if (ifaces.length > 0) setSelIface(ifaces[0]);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Auto-scroll capture output
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [captureOutput]);
+
+  // ── Monitor mode ──
+  const handleEnableMonitor = async () => {
+    setMonitorLoading(true);
+    setMonitorOutput('');
+    try {
+      const res = await axios.post('/api/wifi/monitor', { interface: selIface });
+      setMonIface(res.data.monitor_iface || selIface + 'mon');
+      setMonitorOutput(res.data.output || '');
+      setMonitorEnabled(true);
+    } catch (err: any) {
+      setMonitorOutput(err.response?.data?.output || err.message);
+    } finally {
+      setMonitorLoading(false);
+    }
+  };
+
+  const handleDisableMonitor = async () => {
+    setMonitorLoading(true);
+    try {
+      const res = await axios.delete('/api/wifi/monitor', { data: { monitor_iface: monIface } });
+      setMonitorOutput(res.data.output || '');
+      setMonitorEnabled(false);
+      setMonIface('');
+      setScanning(false);
+      setAps([]);
+      clearInterval(scanPollRef.current!);
+      scanPollRef.current = null;
+    } catch (err: any) {
+      setMonitorOutput(err.response?.data?.output || err.message);
+    } finally {
+      setMonitorLoading(false);
+    }
+  };
+
+  // ── AP Scan ──
+  const startScanPolling = () => {
+    scanPollRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`/api/sessions/${sessionId}/wifi/scan`);
+        setAps(res.data.aps || []);
+        if (res.data.status === 'done') {
+          setScanning(false);
+          clearInterval(scanPollRef.current!);
+          scanPollRef.current = null;
+        }
+      } catch {}
+    }, 3000);
+  };
+
+  const handleStartScan = async () => {
+    setScanError('');
+    setAps([]);
+    setSelected(new Set());
+    setScanning(true);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/wifi/scan`, {
+        monitor_iface: monIface,
+        band,
+      });
+      startScanPolling();
+    } catch (err: any) {
+      setScanError(err.response?.data?.error || err.message);
+      setScanning(false);
+    }
+  };
+
+  const handleStopScan = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/wifi/scan`); } catch {}
+    clearInterval(scanPollRef.current!);
+    scanPollRef.current = null;
+    setScanning(false);
+    // Final read of APs
+    try {
+      const res = await axios.get(`/api/sessions/${sessionId}/wifi/scan`);
+      setAps(res.data.aps || []);
+    } catch {}
+  };
+
+  // ── Selection ──
+  const toggleSelect = (bssid: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(bssid)) next.delete(bssid); else next.add(bssid);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === aps.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(aps.map(a => a.bssid)));
+    }
+  };
+
+  // ── Capture ──
+  const startCapturePoll = () => {
+    capPollRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`/api/sessions/${sessionId}/wifi/capture`);
+        setCaptureOutput(res.data.output || []);
+        setHandshakes(res.data.handshakes || []);
+      } catch {}
+    }, 2000);
+  };
+
+  const handleStartCapture = async () => {
+    const targets = aps
+      .filter(a => selected.has(a.bssid))
+      .map(a => ({ bssid: a.bssid, essid: a.essid, channel: a.channel }));
+    if (targets.length === 0) return;
+    setCaptureOutput([]);
+    setHandshakes([]);
+    setCapturing(true);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/wifi/capture`, {
+        monitor_iface: monIface,
+        targets,
+        deauth_count:  deauthCount,
+        deauth_repeat: deauthRepeat,
+      });
+      startCapturePoll();
+    } catch (err: any) {
+      setCaptureOutput([err.response?.data?.error || err.message]);
+      setCapturing(false);
+    }
+  };
+
+  const handleStopCapture = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/wifi/capture`); } catch {}
+    clearInterval(capPollRef.current!);
+    capPollRef.current = null;
+    setCapturing(false);
+  };
+
+  // Signal strength bar: power is negative dBm, closer to 0 = stronger
+  const signalBar = (pwr: number) => {
+    const pct = Math.max(0, Math.min(100, 100 + pwr)); // e.g. -65 → 35%
+    const color = pct > 60 ? '#5aca8a' : pct > 30 ? '#d0a060' : '#e07070';
+    return (
+      <div className="wifi-signal-bar-wrap" title={`${pwr} dBm`}>
+        <div className="wifi-signal-bar" style={{ width: `${pct}%`, background: color }} />
+        <span className="wifi-signal-label">{pwr} dBm</span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bf-panel">
+
+      {/* ── Adapter & Monitor Mode ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Wireless Adapter</div>
+        <div className="bf-row">
+          <select className="bf-select" value={selIface}
+            onChange={e => setSelIface(e.target.value)}
+            disabled={monitorEnabled}>
+            {interfaces.length === 0
+              ? <option value="">No interfaces found</option>
+              : interfaces.map(i => <option key={i} value={i}>{i}</option>)
+            }
+          </select>
+          {!monitorEnabled ? (
+            <button className="btn-run-attack" onClick={handleEnableMonitor}
+              disabled={monitorLoading || !selIface}>
+              {monitorLoading ? 'Enabling…' : 'Enable Monitor Mode'}
+            </button>
+          ) : (
+            <>
+              <span className="wifi-mon-badge">{monIface} (monitor)</span>
+              <button className="btn-stop-attack" onClick={handleDisableMonitor}
+                disabled={monitorLoading}>
+                {monitorLoading ? 'Stopping…' : 'Disable Monitor Mode'}
+              </button>
+            </>
+          )}
+        </div>
+        {monitorOutput && (
+          <pre className="wifi-mon-output">{monitorOutput}</pre>
+        )}
+      </div>
+
+      {/* ── Scan ── */}
+      {monitorEnabled && (
+        <div className="bf-section">
+          <div className="bf-section-title">Access Point Scan</div>
+          <div className="bf-row">
+            <label className="bf-inline-label">Band</label>
+            <select className="bf-select" style={{ minWidth: 120 }} value={band}
+              onChange={e => setBand(e.target.value)}>
+              <option value="">All (2.4 + 5 GHz)</option>
+              <option value="bg">2.4 GHz only</option>
+              <option value="a">5 GHz only</option>
+              <option value="abg">2.4 + 5 GHz</option>
+            </select>
+            {!scanning ? (
+              <button className="btn-run-attack" onClick={handleStartScan}>Scan for APs</button>
+            ) : (
+              <>
+                <button className="btn-stop-attack" onClick={handleStopScan}>Stop Scan</button>
+                <span className="bf-status-running"><span className="btn-spinner" /> Scanning…</span>
+              </>
+            )}
+          </div>
+          {scanError && <div className="bf-error">{scanError}</div>}
+
+          {/* AP Table */}
+          {aps.length > 0 && (
+            <div className="wifi-ap-table-wrap">
+              <table className="wifi-ap-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <input type="checkbox"
+                        checked={selected.size === aps.length && aps.length > 0}
+                        onChange={toggleSelectAll} />
+                    </th>
+                    <th>ESSID</th>
+                    <th>BSSID</th>
+                    <th>Ch</th>
+                    <th>Signal</th>
+                    <th>Security</th>
+                    <th>Beacons</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aps.map(ap => (
+                    <tr key={ap.bssid}
+                      className={`wifi-ap-row${selected.has(ap.bssid) ? ' selected' : ''}`}
+                      onClick={() => toggleSelect(ap.bssid)}>
+                      <td onClick={e => e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={selected.has(ap.bssid)}
+                          onChange={() => toggleSelect(ap.bssid)} />
+                      </td>
+                      <td className="wifi-essid">{ap.essid || <em className="wifi-hidden">&lt;hidden&gt;</em>}</td>
+                      <td className="loot-mono wifi-bssid">{ap.bssid}</td>
+                      <td className="wifi-ch">{ap.channel}</td>
+                      <td>{signalBar(ap.power)}</td>
+                      <td>
+                        <span className={`wifi-sec-pill${ap.privacy === 'OPN' ? ' open' : ''}`}>
+                          {ap.privacy}{ap.cipher ? `/${ap.cipher}` : ''}{ap.auth ? `-${ap.auth}` : ''}
+                        </span>
+                      </td>
+                      <td className="wifi-beacons">{ap.beacons}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="wifi-ap-count">
+                {aps.length} AP{aps.length !== 1 ? 's' : ''} discovered
+                {selected.size > 0 && ` — ${selected.size} selected`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Capture ── */}
+      {monitorEnabled && selected.size > 0 && (
+        <div className="bf-section">
+          <div className="bf-section-title">Capture Handshake</div>
+          <div className="bf-row bf-row-gap">
+            <label className="bf-inline-label">Deauth packets</label>
+            <input className="bf-num-input" type="number" min={1} max={100}
+              value={deauthCount} onChange={e => setDeauthCount(parseInt(e.target.value)||10)} />
+            <label className="bf-check" style={{ marginLeft: 8 }}>
+              <input type="checkbox" checked={deauthRepeat}
+                onChange={e => setDeauthRepeat(e.target.checked)} />
+              Repeat deauth every 15 s
+            </label>
+          </div>
+          <div className="wifi-selected-targets">
+            {aps.filter(a => selected.has(a.bssid)).map(a => (
+              <span key={a.bssid} className="wifi-target-pill">
+                {a.essid || a.bssid} ch{a.channel}
+              </span>
+            ))}
+          </div>
+          <div className="bf-controls" style={{ marginTop: 8 }}>
+            {!capturing ? (
+              <button className="btn-run-attack" onClick={handleStartCapture}>
+                Capture Handshake{selected.size > 1 ? 's' : ''}
+              </button>
+            ) : (
+              <>
+                <button className="btn-stop-attack" onClick={handleStopCapture}>Stop</button>
+                <span className="bf-status-running"><span className="btn-spinner" /> Capturing…</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Captured Handshakes ── */}
+      {handshakes.length > 0 && (
+        <div className="bf-found-box">
+          <div className="bf-found-title">Handshakes Captured</div>
+          {handshakes.map((h, i) => (
+            <div key={i} className="wifi-handshake-entry">{h}</div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Output ── */}
+      {captureOutput.length > 0 && (
+        <div className="bf-output-wrap">
+          <div className="bf-output-title">Output</div>
+          <div className="bf-output" ref={outputRef}>
+            {captureOutput.map((line, i) => (
+              <div key={i} className={`bf-line${line.startsWith('[+]') ? ' bf-line-found' : ''}`}>
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1478,7 +1858,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -2230,6 +2610,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 onChange={e => handleNotesChange(e.target.value)}
                 spellCheck={false}
               />
+            </div>
+          )}
+
+          {/* ── Wifi Handshake panel ── */}
+          {activeAction === 10 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Wifi Handshake Capture
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <WifiPanel sessionId={sessionId} />
             </div>
           )}
 
