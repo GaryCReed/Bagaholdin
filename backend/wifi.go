@@ -67,9 +67,9 @@ func getWifiInterfaces() []string {
 	return ifaces
 }
 
-// enableMonitorMode runs `airmon-ng start <iface>` and returns the monitor interface name.
+// enableMonitorMode runs `sudo airmon-ng start <iface>` and returns the monitor interface name.
 func enableMonitorMode(iface string) (monIface, output string, err error) {
-	out, err := exec.Command("airmon-ng", "start", iface).CombinedOutput()
+	out, err := exec.Command("sudo", "airmon-ng", "start", iface).CombinedOutput()
 	output = string(out)
 	if err != nil {
 		return "", output, fmt.Errorf("airmon-ng: %w", err)
@@ -89,9 +89,9 @@ func enableMonitorMode(iface string) (monIface, output string, err error) {
 	return monIface, output, nil
 }
 
-// disableMonitorMode runs `airmon-ng stop <monIface>`.
+// disableMonitorMode runs `sudo airmon-ng stop <monIface>`.
 func disableMonitorMode(monIface string) (string, error) {
-	out, err := exec.Command("airmon-ng", "stop", monIface).CombinedOutput()
+	out, err := exec.Command("sudo", "airmon-ng", "stop", monIface).CombinedOutput()
 	return string(out), err
 }
 
@@ -282,7 +282,7 @@ func handleStartWifiScan(db *DB) http.HandlerFunc {
 			args = append(args, "--band", req.Band)
 		}
 
-		cmd := exec.Command("airodump-ng", args...)
+		cmd := exec.Command("sudo", append([]string{"airodump-ng"}, args...)...)
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
 
@@ -431,7 +431,7 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 					"--output-format", "cap",
 					"-w", capPrefix,
 				}
-				capCmd := exec.Command("airodump-ng", capArgs...)
+				capCmd := exec.Command("sudo", append([]string{"airodump-ng"}, capArgs...)...)
 				capStdout, _ := capCmd.StdoutPipe()
 				capStderr, _ := capCmd.StderrPipe()
 
@@ -487,7 +487,7 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 						"-a", t.BSSID,
 						req.MonitorIface,
 					}
-					out, _ := exec.Command("aireplay-ng", deauthArgs...).CombinedOutput()
+					out, _ := exec.Command("sudo", append([]string{"aireplay-ng"}, deauthArgs...)...).CombinedOutput()
 					job.mu.Lock()
 					job.output = append(job.output,
 						fmt.Sprintf("[*] Deauth × %d → %s (%s)", req.DeauthCount, t.BSSID, t.ESSID))
