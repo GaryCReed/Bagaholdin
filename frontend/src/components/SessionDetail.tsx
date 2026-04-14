@@ -633,11 +633,17 @@ function BruteforcePanel({ sessionId }: { sessionId: number }) {
 
   const isWebForm = service === 'http-post-form' || service === 'http-get-form';
 
-  // Load wordlists once
+  // Load wordlists once; default selects to first SecLists entry if present
   useEffect(() => {
     axios.get('/api/wordlists').then(res => {
-      setUserLists(res.data.users || []);
-      setPassLists(res.data.passwords || []);
+      const ul: WordlistEntry[] = res.data.users || [];
+      const pl: WordlistEntry[] = res.data.passwords || [];
+      setUserLists(ul);
+      setPassLists(pl);
+      const firstUser = ul.find(e => e.group.startsWith('SecLists')) || ul[0];
+      const firstPass = pl.find(e => e.group.startsWith('SecLists') && !e.group.includes('Combo')) || pl[0];
+      if (firstUser) setUserFile(firstUser.path);
+      if (firstPass) setPassFile(firstPass.path);
     }).catch(() => {});
   }, []);
 

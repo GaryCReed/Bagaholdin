@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -273,14 +272,67 @@ type WordlistEntry struct {
 	Group string `json:"group"`
 }
 
-func catalogueWordlists() (users []WordlistEntry, passwords []WordlistEntry) {
-	type entry struct {
-		label string
-		path  string
-		group string
+// seclistsBase returns the first existing SecLists root directory.
+func seclistsBase() string {
+	for _, p := range []string{
+		"/usr/share/wordlists/seclists",
+		"/usr/share/seclists",
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
+	return ""
+}
 
-	userCandidates := []entry{
+// walkWordlistDir walks a directory (max 2 levels deep) and returns .txt / .lst
+// entries, skipping README files and directories.
+func walkWordlistDir(root, group string) []WordlistEntry {
+	var out []WordlistEntry
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(strings.ToLower(name), "readme") {
+			continue
+		}
+		path := root + "/" + name
+		if e.IsDir() {
+			// one level of recursion — group name = parent/subdir
+			sub := walkWordlistDir(path, group+"/"+name)
+			out = append(out, sub...)
+			continue
+		}
+		ext := strings.ToLower(name[max(0, len(name)-4):])
+		if ext != ".txt" && ext != ".lst" && ext != ".csv" {
+			continue
+		}
+		label := strings.TrimSuffix(name, ".txt")
+		label = strings.TrimSuffix(label, ".lst")
+		out = append(out, WordlistEntry{Label: label, Path: path, Group: group})
+	}
+	return out
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func catalogueWordlists() (users []WordlistEntry, passwords []WordlistEntry) {
+	base := seclistsBase()
+
+	// ── Username lists ── SecLists first, then fallbacks ──────────────────────
+	if base != "" {
+		users = append(users, walkWordlistDir(base+"/Usernames", "SecLists/Usernames")...)
+	}
+	// Fallback fixed entries (only added if SecLists absent or file exists)
+	type staticEntry struct{ label, path, group string }
+	userFallbacks := []staticEntry{
 		{"unix_users", "/usr/share/metasploit-framework/data/wordlists/unix_users.txt", "Metasploit"},
 		{"http_default_users", "/usr/share/metasploit-framework/data/wordlists/http_default_users.txt", "Metasploit"},
 		{"default_users_services", "/usr/share/metasploit-framework/data/wordlists/default_users_for_services_unhash.txt", "Metasploit"},
@@ -290,19 +342,33 @@ func catalogueWordlists() (users []WordlistEntry, passwords []WordlistEntry) {
 		{"usernames (nmap)", "/usr/share/nmap/nselib/data/usernames.lst", "Nmap"},
 		{"usernames (commix)", "/usr/share/commix/src/txt/default_usernames.txt", "Commix"},
 	}
+	for _, c := range userFallbacks {
+		if _, err := os.Stat(c.path); err == nil {
+			users = append(users, WordlistEntry{Label: c.label, Path: c.path, Group: c.group})
+		}
+	}
 
-	passCandidates := []entry{
+	// ── Password lists ── SecLists first, then fallbacks ──────────────────────
+	if base != "" {
+		passwords = append(passwords, walkWordlistDir(base+"/Passwords", "SecLists/Passwords")...)
+	}
+	passFallbacks := []staticEntry{
 		{"rockyou", "/usr/share/wordlists/rockyou.txt", "Wordlists"},
 		{"fasttrack", "/usr/share/wordlists/fasttrack.txt", "Wordlists"},
 		{"john", "/usr/share/wordlists/john.lst", "Wordlists"},
+		{"nmap.lst", "/usr/share/wordlists/nmap.lst", "Wordlists"},
 		{"password.lst (msf)", "/usr/share/metasploit-framework/data/wordlists/password.lst", "Metasploit"},
 		{"ipmi_passwords", "/usr/share/metasploit-framework/data/wordlists/ipmi_passwords.txt", "Metasploit"},
 		{"default_pass_services", "/usr/share/metasploit-framework/data/wordlists/default_pass_for_services_unhash.txt", "Metasploit"},
-		{"http_default_pass", "/usr/share/metasploit-framework/data/wordlists/http_default_pass.txt", "Metasploit"},
-		{"nmap.lst", "/usr/share/wordlists/nmap.lst", "Wordlists"},
+	}
+	for _, c := range passFallbacks {
+		if _, err := os.Stat(c.path); err == nil {
+			passwords = append(passwords, WordlistEntry{Label: c.label, Path: c.path, Group: c.group})
+		}
 	}
 
-	comboCandidates := []entry{
+	// ── Combo files (appended to passwords with distinct group) ───────────────
+	combos := []staticEntry{
 		{"default_userpass_services", "/usr/share/metasploit-framework/data/wordlists/default_userpass_for_services_unhash.txt", "Metasploit Combo"},
 		{"http_default_userpass", "/usr/share/metasploit-framework/data/wordlists/http_default_userpass.txt", "Metasploit Combo"},
 		{"db2_default_userpass", "/usr/share/metasploit-framework/data/wordlists/db2_default_userpass.txt", "Metasploit Combo"},
@@ -311,52 +377,16 @@ func catalogueWordlists() (users []WordlistEntry, passwords []WordlistEntry) {
 		{"scada_default_userpass", "/usr/share/metasploit-framework/data/wordlists/scada_default_userpass.txt", "Metasploit Combo"},
 		{"routers_userpass", "/usr/share/metasploit-framework/data/wordlists/routers_userpass.txt", "Metasploit Combo"},
 	}
-
-	for _, c := range userCandidates {
-		if _, err := os.Stat(c.path); err == nil {
-			users = append(users, WordlistEntry{Label: c.label, Path: c.path, Group: c.group})
-		}
+	if base != "" {
+		passwords = append(passwords, walkWordlistDir(base+"/Passwords/Default-Credentials", "SecLists Combo")...)
 	}
-	// Combo files are also valid as user lists when used with -C
-	for _, c := range comboCandidates {
-		if _, err := os.Stat(c.path); err == nil {
-			users = append(users, WordlistEntry{Label: c.label + " (combo)", Path: c.path, Group: c.group})
-		}
-	}
-
-	for _, c := range passCandidates {
+	for _, c := range combos {
 		if _, err := os.Stat(c.path); err == nil {
 			passwords = append(passwords, WordlistEntry{Label: c.label, Path: c.path, Group: c.group})
 		}
 	}
 
-	// Combo files listed separately for the combo dropdown
-	var combos []WordlistEntry
-	for _, c := range comboCandidates {
-		if _, err := os.Stat(c.path); err == nil {
-			combos = append(combos, WordlistEntry{Label: c.label, Path: c.path, Group: c.group})
-		}
-	}
-	// Append combos to passwords slice using a sentinel group so frontend can split them
-	passwords = append(passwords, combos...)
-
 	return users, passwords
-}
-
-// Also scan /usr/share/seclists if present
-func init() {
-	go func() {
-		time.Sleep(100 * time.Millisecond) // yield to let main set up
-		seclists := []string{
-			"/usr/share/seclists/Usernames",
-			"/usr/share/seclists/Passwords",
-		}
-		for _, dir := range seclists {
-			if _, err := os.Stat(dir); err == nil {
-				_ = dir // seclists present — future expansion
-			}
-		}
-	}()
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
