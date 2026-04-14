@@ -1478,7 +1478,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
