@@ -67,13 +67,20 @@ func getWifiInterfaces() []string {
 	return ifaces
 }
 
-// enableMonitorMode runs `sudo airmon-ng start <iface>` and returns the monitor interface name.
+// enableMonitorMode kills interfering processes then runs `sudo airmon-ng start <iface>`.
+// Returns the monitor interface name, combined output, and any error.
 func enableMonitorMode(iface string) (monIface, output string, err error) {
-	out, err := exec.Command("sudo", "airmon-ng", "start", iface).CombinedOutput()
-	output = string(out)
-	if err != nil {
-		return "", output, fmt.Errorf("airmon-ng: %w", err)
+	// Kill NetworkManager / wpa_supplicant first — they will fight monitor mode otherwise.
+	killOut, _ := exec.Command("sudo", "airmon-ng", "check", "kill").CombinedOutput()
+	output = string(killOut)
+
+	startOut, startErr := exec.Command("sudo", "airmon-ng", "start", iface).CombinedOutput()
+	output += string(startOut)
+
+	if startErr != nil {
+		return "", output, fmt.Errorf("airmon-ng start: %w", startErr)
 	}
+
 	// Parse "(mac80211 monitor mode vif enabled … on [phyX]wlan0mon)"
 	monIface = iface + "mon" // sensible default
 	for _, line := range strings.Split(output, "\n") {
@@ -86,6 +93,20 @@ func enableMonitorMode(iface string) (monIface, output string, err error) {
 			}
 		}
 	}
+
+	// Verify the monitor interface actually appeared in `iw dev`
+	checkOut, _ := exec.Command("iw", "dev").Output()
+	found := false
+	for _, l := range strings.Split(string(checkOut), "\n") {
+		if strings.TrimSpace(l) == "Interface "+monIface {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", output, fmt.Errorf("monitor interface %q not found after airmon-ng start — interface may not support monitor mode", monIface)
+	}
+
 	return monIface, output, nil
 }
 
@@ -198,12 +219,12 @@ func handleEnableMonitor() http.HandlerFunc {
 			return
 		}
 		monIface, out, err := enableMonitorMode(req.Interface)
+		outData, _ := encodeJSON(out)
 		if err != nil {
-			outData, _ := encodeJSON(out)
+			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, `{"error":%q,"output":%s}`, err.Error(), outData)
 			return
 		}
-		outData, _ := encodeJSON(out)
 		fmt.Fprintf(w, `{"monitor_iface":%q,"output":%s}`, monIface, outData)
 	}
 }
@@ -221,12 +242,12 @@ func handleDisableMonitor() http.HandlerFunc {
 		}
 		parseJSON(r, &req)
 		out, err := disableMonitorMode(req.MonitorIface)
+		outData, _ := encodeJSON(out)
 		if err != nil {
-			outData, _ := encodeJSON(out)
+			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, `{"error":%q,"output":%s}`, err.Error(), outData)
 			return
 		}
-		outData, _ := encodeJSON(out)
 		fmt.Fprintf(w, `{"status":"stopped","output":%s}`, outData)
 	}
 }

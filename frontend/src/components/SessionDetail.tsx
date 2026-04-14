@@ -652,11 +652,14 @@ function WifiPanel({ sessionId }: { sessionId: number }) {
     setMonitorOutput('');
     try {
       const res = await axios.post('/api/wifi/monitor', { interface: selIface });
-      setMonIface(res.data.monitor_iface || selIface + 'mon');
       setMonitorOutput(res.data.output || '');
+      setMonIface(res.data.monitor_iface);
       setMonitorEnabled(true);
     } catch (err: any) {
-      setMonitorOutput(err.response?.data?.output || err.message);
+      const d = err.response?.data;
+      const out  = d?.output  || '';
+      const msg  = d?.error   || err.message || 'Enable monitor mode failed';
+      setMonitorOutput((msg ? msg + '\n' : '') + out);
     } finally {
       setMonitorLoading(false);
     }
@@ -674,7 +677,10 @@ function WifiPanel({ sessionId }: { sessionId: number }) {
       clearInterval(scanPollRef.current!);
       scanPollRef.current = null;
     } catch (err: any) {
-      setMonitorOutput(err.response?.data?.output || err.message);
+      const d = err.response?.data;
+      const out = d?.output || '';
+      const msg = d?.error  || err.message || 'Disable monitor mode failed';
+      setMonitorOutput((msg ? msg + '\n' : '') + out);
     } finally {
       setMonitorLoading(false);
     }
