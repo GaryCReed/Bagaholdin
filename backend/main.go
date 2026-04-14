@@ -104,6 +104,10 @@ func main() {
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))
+		r.Post("/sessions/{id}/bruteforce", handleStartBruteforce(db))
+		r.Get("/sessions/{id}/bruteforce", handleGetBruteforce(db))
+		r.Delete("/sessions/{id}/bruteforce", handleStopBruteforce(db))
+		r.Get("/wordlists", handleGetWordlists())
 	})
 
 	// Serve React SPA: real files are served directly, everything else falls back to index.html

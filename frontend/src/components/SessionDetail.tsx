@@ -79,6 +79,7 @@ const ACTIONS = [
   { id: 7, label: '7. Reporting' },
   { id: 8, label: '8. Loot' },
   { id: 9, label: '9. Notes' },
+  { id: 10, label: '10. Bruteforce' },
 ];
 
 // ── Quick command buttons ──
@@ -575,6 +576,322 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
           <ResultTable results={manualResults} label={`results for "${manualQuery}"`} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Bruteforce panel ──────────────────────────────────────────────────────────
+
+const SERVICES = [
+  { group: 'Web',      values: ['http-post-form','http-get-form','http-get','http-head'] },
+  { group: 'Network',  values: ['ssh','ftp','telnet','rdp','smb','vnc','rlogin'] },
+  { group: 'Mail',     values: ['smtp','pop3','imap'] },
+  { group: 'Database', values: ['mysql','postgres','mssql','oracle-listener'] },
+];
+
+interface WordlistEntry { label: string; path: string; group: string; }
+interface FoundCred { login: string; password: string; host: string; port: number; service: string; }
+
+function BruteforcePanel({ sessionId }: { sessionId: number }) {
+  // Form state
+  const [service,       setService]       = useState('ssh');
+  const [mode,          setMode]          = useState<'wordlist'|'combo'|'single'>('wordlist');
+  const [userFile,      setUserFile]      = useState('');
+  const [passFile,      setPassFile]      = useState('');
+  const [comboFile,     setComboFile]     = useState('');
+  const [customUser,    setCustomUser]    = useState('');
+  const [customPass,    setCustomPass]    = useState('');
+  const [customCombo,   setCustomCombo]   = useState('');
+  const [login,         setLogin]         = useState('');
+  const [password,      setPassword]      = useState('');
+  const [tryNull,       setTryNull]       = useState(false);
+  const [tryAsLogin,    setTryAsLogin]    = useState(false);
+  const [tryReverse,    setTryReverse]    = useState(false);
+  const [stopFirst,     setStopFirst]     = useState(true);
+  const [useSSL,        setUseSSL]        = useState(false);
+  const [loopUsers,     setLoopUsers]     = useState(false);
+  const [verbose,       setVerbose]       = useState(false);
+  const [tasks,         setTasks]         = useState(16);
+  const [timeout,       setTimeout_]      = useState(32);
+  const [port,          setPort]          = useState(0);
+  const [formURL,       setFormURL]       = useState('/login');
+  const [formParams,    setFormParams]    = useState('user=^USER^&pass=^PASS^');
+  const [formCond,      setFormCond]      = useState('F=incorrect');
+
+  // Wordlists from server
+  const [userLists,     setUserLists]     = useState<WordlistEntry[]>([]);
+  const [passLists,     setPassLists]     = useState<WordlistEntry[]>([]);
+
+  // Job state
+  const [running,       setRunning]       = useState(false);
+  const [output,        setOutput]        = useState<string[]>([]);
+  const [found,         setFound]         = useState<FoundCred[]>([]);
+  const [jobDone,       setJobDone]       = useState(false);
+  const [jobError,      setJobError]      = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  const isWebForm = service === 'http-post-form' || service === 'http-get-form';
+
+  // Load wordlists once
+  useEffect(() => {
+    axios.get('/api/wordlists').then(res => {
+      setUserLists(res.data.users || []);
+      setPassLists(res.data.passwords || []);
+    }).catch(() => {});
+  }, []);
+
+  // Auto-scroll output
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  const startPolling = () => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`/api/sessions/${sessionId}/bruteforce`);
+        const { status, output: out, found: f, error: e } = res.data;
+        setOutput(out || []);
+        setFound(f || []);
+        if (e) setJobError(e);
+        if (status === 'done') {
+          setRunning(false);
+          setJobDone(true);
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
+      } catch {}
+    }, 2000);
+  };
+
+  const handleStart = async () => {
+    setOutput([]);
+    setFound([]);
+    setJobDone(false);
+    setJobError('');
+    setRunning(true);
+
+    const resolvedUserFile  = customUser  || userFile;
+    const resolvedPassFile  = customPass  || passFile;
+    const resolvedComboFile = customCombo || comboFile;
+
+    try {
+      await axios.post(`/api/sessions/${sessionId}/bruteforce`, {
+        service, mode,
+        user_file:      resolvedUserFile,
+        pass_file:      resolvedPassFile,
+        combo_file:     resolvedComboFile,
+        login, password,
+        try_null:       tryNull,
+        try_as_login:   tryAsLogin,
+        try_reverse:    tryReverse,
+        stop_first:     stopFirst,
+        use_ssl:        useSSL,
+        loop_users:     loopUsers,
+        verbose,
+        tasks, timeout: timeout, port,
+        form_url:       formURL,
+        form_params:    formParams,
+        form_condition: formCond,
+      });
+      startPolling();
+    } catch (err: any) {
+      setJobError(err.response?.data?.error || err.message);
+      setRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/bruteforce`); } catch {}
+    clearInterval(pollRef.current!);
+    pollRef.current = null;
+    setRunning(false);
+    setJobDone(true);
+  };
+
+  // Group wordlists by group field for <optgroup>
+  const groupedOptions = (list: WordlistEntry[]) => {
+    const groups: Record<string, WordlistEntry[]> = {};
+    for (const e of list) { (groups[e.group] = groups[e.group] || []).push(e); }
+    return Object.entries(groups).map(([g, items]) => (
+      <optgroup key={g} label={g}>
+        {items.map(e => <option key={e.path} value={e.path}>{e.label}</option>)}
+      </optgroup>
+    ));
+  };
+
+  return (
+    <div className="bf-panel">
+
+      {/* ── Service ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Service</div>
+        <div className="bf-row">
+          <select className="bf-select" value={service} onChange={e => setService(e.target.value)}>
+            {SERVICES.map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.values.map(v => <option key={v} value={v}>{v}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <label className="bf-inline-label">Port override</label>
+          <input className="bf-num-input" type="number" min={0} max={65535} value={port || ''}
+            placeholder="default"
+            onChange={e => setPort(parseInt(e.target.value)||0)} />
+        </div>
+      </div>
+
+      {/* ── HTTP form options (conditional) ── */}
+      {isWebForm && (
+        <div className="bf-section">
+          <div className="bf-section-title">Web Form</div>
+          <div className="bf-form-grid">
+            <label>URL path</label>
+            <input className="bf-text-input" value={formURL} onChange={e => setFormURL(e.target.value)} placeholder="/login" />
+            <label>POST params</label>
+            <input className="bf-text-input" value={formParams} onChange={e => setFormParams(e.target.value)} placeholder="user=^USER^&pass=^PASS^" />
+            <label>Condition</label>
+            <input className="bf-text-input" value={formCond} onChange={e => setFormCond(e.target.value)} placeholder="F=incorrect  or  S=Welcome" />
+          </div>
+        </div>
+      )}
+
+      {/* ── Credential mode ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Credentials</div>
+        <div className="bf-mode-tabs">
+          {(['wordlist','combo','single'] as const).map(m => (
+            <button key={m} className={`bf-mode-tab${mode===m?' active':''}`} onClick={() => setMode(m)}>
+              {m === 'wordlist' ? 'Wordlists' : m === 'combo' ? 'Combo file' : 'Single'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'wordlist' && (
+          <div className="bf-cred-grid">
+            <div className="bf-cred-col">
+              <label className="bf-label">Username list</label>
+              <select className="bf-select" value={userFile} onChange={e => { setUserFile(e.target.value); setCustomUser(''); }}>
+                <option value="">— select —</option>
+                {groupedOptions(userLists)}
+              </select>
+              <input className="bf-text-input" placeholder="or custom path…" value={customUser}
+                onChange={e => { setCustomUser(e.target.value); setUserFile(''); }} />
+            </div>
+            <div className="bf-cred-col">
+              <label className="bf-label">Password list</label>
+              <select className="bf-select" value={passFile} onChange={e => { setPassFile(e.target.value); setCustomPass(''); }}>
+                <option value="">— select —</option>
+                {groupedOptions(passLists.filter(e => !e.group.includes('Combo')))}
+              </select>
+              <input className="bf-text-input" placeholder="or custom path…" value={customPass}
+                onChange={e => { setCustomPass(e.target.value); setPassFile(''); }} />
+            </div>
+          </div>
+        )}
+
+        {mode === 'combo' && (
+          <div className="bf-cred-col">
+            <label className="bf-label">Combo file (user:pass per line)</label>
+            <select className="bf-select" value={comboFile} onChange={e => { setComboFile(e.target.value); setCustomCombo(''); }}>
+              <option value="">— select —</option>
+              {groupedOptions(passLists.filter(e => e.group.includes('Combo')))}
+            </select>
+            <input className="bf-text-input" placeholder="or custom path…" value={customCombo}
+              onChange={e => { setCustomCombo(e.target.value); setComboFile(''); }} />
+          </div>
+        )}
+
+        {mode === 'single' && (
+          <div className="bf-cred-grid">
+            <div className="bf-cred-col">
+              <label className="bf-label">Username</label>
+              <input className="bf-text-input" value={login} onChange={e => setLogin(e.target.value)} placeholder="admin" />
+            </div>
+            <div className="bf-cred-col">
+              <label className="bf-label">Password</label>
+              <input className="bf-text-input" value={password} onChange={e => setPassword(e.target.value)} placeholder="password123" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Extra checks ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Extra checks (-e)</div>
+        <div className="bf-checkbox-grid">
+          <label className="bf-check"><input type="checkbox" checked={tryNull}    onChange={e => setTryNull(e.target.checked)}    /> Try null password</label>
+          <label className="bf-check"><input type="checkbox" checked={tryAsLogin} onChange={e => setTryAsLogin(e.target.checked)} /> Try login as password</label>
+          <label className="bf-check"><input type="checkbox" checked={tryReverse} onChange={e => setTryReverse(e.target.checked)} /> Try reverse login as password</label>
+        </div>
+      </div>
+
+      {/* ── Options ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Options</div>
+        <div className="bf-checkbox-grid">
+          <label className="bf-check"><input type="checkbox" checked={stopFirst}  onChange={e => setStopFirst(e.target.checked)}  /> Stop after first found pair (-f)</label>
+          <label className="bf-check"><input type="checkbox" checked={useSSL}     onChange={e => setUseSSL(e.target.checked)}     /> Use SSL (-S)</label>
+          <label className="bf-check"><input type="checkbox" checked={loopUsers}  onChange={e => setLoopUsers(e.target.checked)}  /> Loop usernames first (-u)</label>
+          <label className="bf-check"><input type="checkbox" checked={verbose}    onChange={e => setVerbose(e.target.checked)}    /> Verbose output (-V)</label>
+        </div>
+        <div className="bf-row bf-row-gap">
+          <label className="bf-inline-label">Threads (-t)</label>
+          <input className="bf-num-input" type="number" min={1} max={64} value={tasks}
+            onChange={e => setTasks(parseInt(e.target.value)||16)} />
+          <label className="bf-inline-label">Timeout s (-w)</label>
+          <input className="bf-num-input" type="number" min={1} max={120} value={timeout}
+            onChange={e => setTimeout_(parseInt(e.target.value)||32)} />
+        </div>
+      </div>
+
+      {/* ── Controls ── */}
+      <div className="bf-controls">
+        {!running ? (
+          <button className="btn-run-attack" onClick={handleStart}>Run Attack</button>
+        ) : (
+          <button className="btn-stop-attack" onClick={handleStop}>Stop</button>
+        )}
+        {running && <span className="bf-status-running"><span className="btn-spinner" /> Running…</span>}
+        {jobDone && !running && <span className="bf-status-done">Done</span>}
+      </div>
+
+      {/* ── Found credentials ── */}
+      {found.length > 0 && (
+        <div className="bf-found-box">
+          <div className="bf-found-title">Credentials Found</div>
+          <table className="bf-found-table">
+            <thead><tr><th>Host</th><th>Port</th><th>Service</th><th>Login</th><th>Password</th></tr></thead>
+            <tbody>
+              {found.map((c, i) => (
+                <tr key={i}>
+                  <td>{c.host}</td>
+                  <td>{c.port}</td>
+                  <td>{c.service}</td>
+                  <td className="loot-mono">{c.login}</td>
+                  <td className="loot-mono">{c.password}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Output ── */}
+      {(output.length > 0 || jobError) && (
+        <div className="bf-output-wrap">
+          <div className="bf-output-title">Output</div>
+          {jobError && <div className="bf-error">{jobError}</div>}
+          <div className="bf-output" ref={outputRef}>
+            {output.map((line, i) => (
+              <div key={i} className={`bf-line${line.startsWith('[') && line.includes('][') ? ' bf-line-found' : ''}`}>
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1881,6 +2198,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 onChange={e => handleNotesChange(e.target.value)}
                 spellCheck={false}
               />
+            </div>
+          )}
+
+          {/* ── Bruteforce panel ── */}
+          {activeAction === 10 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Bruteforce
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <BruteforcePanel sessionId={sessionId} />
             </div>
           )}
 

@@ -1511,3 +1511,305 @@
   color: #e0b870;
   text-decoration: underline;
 }
+
+/* ── Bruteforce panel ─────────────────────────────────────────────────────── */
+
+.bf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.bf-section {
+  background: #12181f;
+  border: 1px solid #1e2a38;
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bf-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5a8a6a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+
+/* Row of controls side by side */
+.bf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bf-row-gap {
+  margin-top: 4px;
+}
+
+.bf-inline-label {
+  font-size: 12px;
+  color: #8898aa;
+  white-space: nowrap;
+}
+
+/* Dropdowns */
+.bf-select {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 5px 8px;
+  min-width: 220px;
+  cursor: pointer;
+}
+
+.bf-select:focus { outline: none; border-color: #3a7a5a; }
+
+/* Text inputs */
+.bf-text-input {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 5px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+}
+
+.bf-text-input:focus { outline: none; border-color: #3a7a5a; }
+
+/* Number inputs */
+.bf-num-input {
+  background: #0e1520;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #c8d8e8;
+  font-size: 12px;
+  padding: 5px 6px;
+  width: 70px;
+  text-align: center;
+}
+
+.bf-num-input:focus { outline: none; border-color: #3a7a5a; }
+
+/* Mode tabs */
+.bf-mode-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.bf-mode-tab {
+  background: #1a2530;
+  border: 1px solid #263040;
+  border-radius: 4px;
+  color: #8898aa;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.bf-mode-tab.active {
+  background: #1e3a28;
+  border-color: #3a7a5a;
+  color: #5aaa7a;
+}
+
+.bf-mode-tab:hover:not(.active) { background: #1e2a38; color: #c8d8e8; }
+
+/* Credential two-column grid */
+.bf-cred-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.bf-cred-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bf-label {
+  font-size: 11px;
+  color: #8898aa;
+  font-weight: 500;
+}
+
+/* Web form grid */
+.bf-form-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.bf-form-grid label {
+  font-size: 12px;
+  color: #8898aa;
+  text-align: right;
+}
+
+/* Checkbox grid */
+.bf-checkbox-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+
+.bf-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #a8b8c8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bf-check input[type="checkbox"] {
+  accent-color: #3a7a5a;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* Controls row */
+.bf-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-run-attack {
+  background: #1e4a2e;
+  border: 1px solid #3a7a5a;
+  border-radius: 5px;
+  color: #5aca8a;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-run-attack:hover { background: #235533; }
+
+.btn-stop-attack {
+  background: #4a1e1e;
+  border: 1px solid #8a3a3a;
+  border-radius: 5px;
+  color: #e07070;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-stop-attack:hover { background: #5a2222; }
+
+.bf-status-running {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #a0b8d0;
+  font-size: 12px;
+}
+
+.bf-status-done {
+  color: #5aca8a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Found credentials box */
+.bf-found-box {
+  background: #0e2018;
+  border: 1px solid #3a7a5a;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.bf-found-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5aca8a;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.bf-found-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bf-found-table th {
+  text-align: left;
+  color: #5a8a6a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-bottom: 1px solid #1e3a28;
+}
+
+.bf-found-table td {
+  padding: 5px 8px;
+  color: #c8e8d8;
+  border-bottom: 1px solid #12261a;
+}
+
+/* Output */
+.bf-output-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bf-output-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5a7a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bf-output {
+  background: #080d14;
+  border: 1px solid #1a2430;
+  border-radius: 5px;
+  padding: 10px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #8aacbc;
+  max-height: 340px;
+  overflow-y: auto;
+  line-height: 1.55;
+}
+
+.bf-line { white-space: pre-wrap; word-break: break-all; }
+
+/* Highlight lines that contain a found credential */
+.bf-line-found { color: #5aca8a; font-weight: 600; }
+
+.bf-error {
+  background: #2a1010;
+  border: 1px solid #6a2a2a;
+  border-radius: 4px;
+  color: #e07070;
+  font-size: 12px;
+  padding: 8px 12px;
+}
