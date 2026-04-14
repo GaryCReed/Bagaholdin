@@ -69,7 +69,11 @@ interface ServiceResult {
   modules: string[];
 }
 
-const ACTIONS = [
+type ActionItem =
+  | { type?: undefined; id: number; label: string }
+  | { type: 'divider'; label: string };
+
+const ACTIONS: ActionItem[] = [
   { id: 1, label: '1. Vulnerability Scan' },
   { id: 2, label: '2. Enumeration' },
   { id: 3, label: '3. CVE Analysis' },
@@ -79,7 +83,8 @@ const ACTIONS = [
   { id: 7, label: '7. Reporting' },
   { id: 8, label: '8. Loot' },
   { id: 9, label: '9. Notes' },
-  { id: 10, label: '10. Bruteforce' },
+  { type: 'divider', label: 'Password Attacks' },
+  { id: 12, label: '12. Bruteforce' },
 ];
 
 // ── Quick command buttons ──
@@ -1443,7 +1448,11 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         <aside className="sd-sidebar">
           <h2>Actions</h2>
           <nav className="action-nav">
-            {ACTIONS.map(action => (
+            {ACTIONS.map((action, idx) => {
+              if (action.type === 'divider') {
+                return <div key={`div-${idx}`} className="action-divider">{action.label}</div>;
+              }
+              return (
               <button
                 key={action.id}
                 className={`action-item${activeAction === action.id ? ' active' : ''}`}
@@ -1463,7 +1472,8 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
               >
                 {action.label}
               </button>
-            ))}
+              );
+            })}
           </nav>
         </aside>
 
@@ -2224,7 +2234,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Bruteforce panel ── */}
-          {activeAction === 10 && (
+          {activeAction === 12 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
