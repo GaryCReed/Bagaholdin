@@ -247,8 +247,9 @@ func runHydra(sessionID int, target string, req BruteforceRequest, db *DB) {
 			job.output = append(job.output, line)
 			if fc := parseHydraLine(line); fc != nil {
 				job.found = append(job.found, *fc)
-				// Auto-save to loot (best-effort, async-safe via mutex already held above)
-				go AppendSessionCredential(sessionID, target, fc.Login, fc.Password)
+				// Save to loot outside the job mutex to avoid deadlock with lootMu.
+				cred := *fc
+				go AppendBruteforceCredential(sessionID, target, cred.Login, cred.Password, cred.Service)
 			}
 			job.mu.Unlock()
 		}

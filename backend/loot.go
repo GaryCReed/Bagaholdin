@@ -6,8 +6,13 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
+
+// lootMu serialises all loot file reads+writes to prevent concurrent goroutines
+// from overwriting each other (e.g. multiple hydra creds found simultaneously).
+var lootMu sync.Mutex
 
 // ── XML / JSON structures ────────────────────────────────────────────────────
 
@@ -59,19 +64,22 @@ func saveLootDocument(doc *LootDocument) error {
 		append([]byte(xml.Header), data...), 0644)
 }
 
-// AppendSessionCredential saves a username/password pair used to open a successful MSF
-// session.  It deduplicates by (username, password) so re-runs don't create duplicates.
-func AppendSessionCredential(sessionID int, target, username, password string) error {
+// appendCredential is the shared implementation for credential loot entries.
+// lootMu must NOT be held by the caller — this function acquires it.
+func appendCredential(sessionID int, target, lootType, source, username, password string) error {
 	if username == "" && password == "" {
 		return nil
 	}
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
 	doc := loadLootDocument(sessionID)
 	if doc == nil {
 		doc = &LootDocument{SessionID: sessionID, Target: target}
 	}
-	// Dedup: skip if an identical credential entry already exists.
+	// Dedup: skip if an identical (type, username, password) entry already exists.
 	for _, item := range doc.Items {
-		if item.Type != "session_credential" {
+		if item.Type != lootType {
 			continue
 		}
 		uMatch, pMatch := false, false
@@ -84,15 +92,59 @@ func AppendSessionCredential(sessionID int, target, username, password string) e
 			}
 		}
 		if uMatch && pMatch {
-			return nil // already recorded
+			return nil
 		}
 	}
 	ts := time.Now().UTC().Format(time.RFC3339)
 	doc.Items = append(doc.Items, LootItem{
-		Type:      "session_credential",
-		Source:    "msf_session_open",
+		Type:      lootType,
+		Source:    source,
 		Timestamp: ts,
 		Fields:    lootFields("username", username, "password", password),
+	})
+	return saveLootDocument(doc)
+}
+
+// AppendSessionCredential saves credentials captured when an MSF session opens.
+func AppendSessionCredential(sessionID int, target, username, password string) error {
+	return appendCredential(sessionID, target, "session_credential", "msf_session_open", username, password)
+}
+
+// AppendBruteforceCredential saves a credential pair found by Hydra.
+func AppendBruteforceCredential(sessionID int, target, username, password, service string) error {
+	if username == "" && password == "" {
+		return nil
+	}
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	for _, item := range doc.Items {
+		if item.Type != "bruteforce_credential" {
+			continue
+		}
+		uMatch, pMatch := false, false
+		for _, f := range item.Fields {
+			if f.Name == "username" && f.Value == username {
+				uMatch = true
+			}
+			if f.Name == "password" && f.Value == password {
+				pMatch = true
+			}
+		}
+		if uMatch && pMatch {
+			return nil
+		}
+	}
+	ts := time.Now().UTC().Format(time.RFC3339)
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "bruteforce_credential",
+		Source:    "hydra/" + service,
+		Timestamp: ts,
+		Fields:    lootFields("username", username, "password", password, "service", service),
 	})
 	return saveLootDocument(doc)
 }

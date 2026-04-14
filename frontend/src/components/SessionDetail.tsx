@@ -2044,7 +2044,23 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
               {!lootLoading && lootItems.length > 0 && (
                 <div className="loot-body">
-                  {/* Session Credentials */}
+                  {/* Bruteforce Credentials (Hydra) */}
+                  {lootItems.filter(i => i.type === 'bruteforce_credential').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-cred">Bruteforce Credentials</div>
+                      <table className="loot-table">
+                        <thead><tr><th>Service</th><th>Username</th><th>Password</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'bruteforce_credential').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td className="loot-source">{f.service || item.source}</td><td className="loot-mono">{f.username || '—'}</td><td className="loot-mono">{f.password || '—'}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Session Credentials (MSF session open) */}
                   {lootItems.filter(i => i.type === 'session_credential').length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-cred">Session Credentials</div>
@@ -2166,10 +2182,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   )}
 
                   {/* Other */}
-                  {lootItems.filter(i => !['session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
+                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-other">Other</div>
-                      {lootItems.filter(i => !['session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
+                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
                         <div key={idx} className="loot-kv-block">
                           <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
                           {(item.fields||[]).map((f:any) => (
