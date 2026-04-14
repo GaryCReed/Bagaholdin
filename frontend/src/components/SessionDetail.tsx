@@ -94,7 +94,7 @@ const ACTIONS: ActionItem[] = [
 // ── Quick command buttons ──
 // sessionType: 'meterpreter' | 'shell' | 'any'
 // platform:    'any' | 'linux' | 'windows'
-interface PostExCmd { label: string; cmd: string }
+interface PostExCmd { label: string; cmd: string; searchInput?: boolean }
 interface PostExGroup {
   label: string;
   sessionType: 'meterpreter' | 'shell' | 'any';
@@ -137,17 +137,17 @@ const POST_EX_QUICK: PostExGroup[] = [
     commands: [
       { label: 'pwd',          cmd: 'pwd' },
       { label: 'ls',           cmd: 'ls' },
-      { label: 'search',       cmd: 'search -f *.txt' },
+      { label: 'search',       cmd: 'search -f', searchInput: true },
     ],
   },
   // ── Meterpreter / Linux ──
   {
     label: 'Linux Info', sessionType: 'meterpreter', platform: 'linux',
     commands: [
-      { label: 'uname -a',     cmd: 'shell uname -a' },
-      { label: 'id',           cmd: 'shell id' },
-      { label: 'cat /etc/passwd', cmd: 'shell cat /etc/passwd' },
-      { label: 'crontab -l',   cmd: 'shell crontab -l' },
+      { label: 'shell id',           cmd: 'shell id' },
+      { label: 'shell cat /etc/issue', cmd: 'shell cat /etc/issue' },
+      { label: 'shell cat /etc/passwd', cmd: 'shell cat /etc/passwd' },
+      { label: 'shell crontab -l',   cmd: 'shell crontab -l' },
     ],
   },
   {
@@ -2644,6 +2644,8 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const [postLoading, setPostLoading] = useState(false);
   const [postRunning, setPostRunning] = useState('');
   const postRunningRef = useRef(false); // ref-based guard against double-fire
+  const [postExSearch, setPostExSearch] = useState('');           // input for meterpreter file search
+  const [sessionTypeOverride, setSessionTypeOverride] = useState<'auto'|'meterpreter'|'shell'>('auto');
 
   // Askpass helper — stores a sudo password that is injected via `sudo -S` at run time.
   // askpassStored is the live password used by handlePostExRun.
@@ -3066,13 +3068,15 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     : null;
 
   // Determine active session type.
-  // Priority: the session the user explicitly interacted with → last known MSF session → 'any'.
+  // Priority: manual override → the session the user explicitly interacted with → last known MSF session → 'any'.
   const activeMsfSession = msfSessions.length > 0 ? msfSessions[msfSessions.length - 1] : null;
-  const activeSessionType: 'meterpreter' | 'shell' | 'any' = interactedSession
+  const detectedSessionType: 'meterpreter' | 'shell' | 'any' = interactedSession
     ? (interactedSession.isMeterpreter ? 'meterpreter' : 'shell')
     : activeMsfSession
       ? (activeMsfSession.type.startsWith('meterpreter') ? 'meterpreter' : 'shell')
       : 'any';
+  const activeSessionType: 'meterpreter' | 'shell' | 'any' =
+    sessionTypeOverride !== 'auto' ? sessionTypeOverride : detectedSessionType;
 
   // Filter quick command groups by session type and OS
   const visibleQuickGroups = POST_EX_QUICK.filter(g => {
@@ -3569,7 +3573,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 <div className="post-ex-context">
                   <div className="post-ex-context-row">
                     <span className="post-ex-context-label">Session type:</span>
-                    {activeMsfSession ? (
+                    {activeMsfSession || sessionTypeOverride !== 'auto' ? (
                       <span className={`msf-session-type-badge ${activeSessionType === 'meterpreter' ? 'badge-meterpreter' : 'badge-shell'}`}>
                         {activeSessionType === 'meterpreter' ? 'Meterpreter' : 'Shell'}
                       </span>
@@ -3579,6 +3583,16 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                     {activeMsfSession && (
                       <span className="post-ex-session-info">{activeMsfSession.info}</span>
                     )}
+                    <select
+                      className="post-ex-type-override"
+                      value={sessionTypeOverride}
+                      onChange={e => setSessionTypeOverride(e.target.value as 'auto'|'meterpreter'|'shell')}
+                      title="Override detected session type to show different command sets"
+                    >
+                      <option value="auto">Auto-detect{detectedSessionType !== 'any' ? ` (${detectedSessionType})` : ''}</option>
+                      <option value="meterpreter">Meterpreter</option>
+                      <option value="shell">Shell</option>
+                    </select>
                   </div>
 
                   {/* ── Askpass helper — stores sudo password, injected via sudo -S at run time ── */}
@@ -3636,7 +3650,28 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                           )}
                         </div>
                         <div className="post-ex-quick-buttons">
-                          {group.commands.map(c => (
+                          {group.commands.map(c => c.searchInput ? (
+                            <span key={c.cmd} className="post-ex-search-inline">
+                              <input
+                                className="post-ex-search-input"
+                                type="text"
+                                placeholder="pattern, e.g. *.txt"
+                                value={postExSearch}
+                                onChange={e => setPostExSearch(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && postExSearch.trim()) {
+                                    handlePostExRun(`${c.cmd} ${postExSearch.trim()}`, `search ${postExSearch.trim()}`);
+                                  }
+                                }}
+                              />
+                              <button type="button" className="btn-post-quick"
+                                onClick={e => { e.stopPropagation(); handlePostExRun(`${c.cmd} ${postExSearch.trim()}`, `search ${postExSearch.trim()}`); }}
+                                disabled={postLoading || !postExSearch.trim()}
+                                title={`${c.cmd} <pattern>`}>
+                                search
+                              </button>
+                            </span>
+                          ) : (
                             <button key={c.cmd} type="button" className="btn-post-quick"
                               onClick={e => { e.stopPropagation(); handlePostExRun(c.cmd, c.label); }}
                               disabled={postLoading} title={c.cmd}>

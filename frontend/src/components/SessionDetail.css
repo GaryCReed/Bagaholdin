@@ -1236,6 +1236,40 @@
   cursor: not-allowed;
 }
 
+/* Session type override selector */
+.post-ex-type-override {
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #9a9a9a;
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.post-ex-type-override:focus { outline: none; border-color: #5a7a5a; }
+
+/* Inline search widget inside quick command buttons row */
+.post-ex-search-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.post-ex-search-input {
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  color: #c8c8c8;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  padding: 3px 6px;
+  width: 130px;
+}
+
+.post-ex-search-input:focus { outline: none; border-color: #5a7a5a; }
+
 /* ── Recommended modules ── */
 .post-ex-modules-list {
   display: flex;
