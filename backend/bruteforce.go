@@ -137,7 +137,7 @@ func buildHydraArgs(target string, req BruteforceRequest, outFile string) ([]str
 		args = append(args, "-u")
 	}
 	if req.Verbose {
-		args = append(args, "-V")
+		args = append(args, "-V", "-v")
 	}
 
 	tasks := req.Tasks

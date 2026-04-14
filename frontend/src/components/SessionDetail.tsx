@@ -610,7 +610,7 @@ function BruteforcePanel({ sessionId }: { sessionId: number }) {
   const [stopFirst,     setStopFirst]     = useState(true);
   const [useSSL,        setUseSSL]        = useState(false);
   const [loopUsers,     setLoopUsers]     = useState(false);
-  const [verbose,       setVerbose]       = useState(false);
+  const [verbose,       setVerbose]       = useState(true);
   const [tasks,         setTasks]         = useState(16);
   const [timeout,       setTimeout_]      = useState(32);
   const [port,          setPort]          = useState(0);
