@@ -85,6 +85,7 @@ const ACTIONS: ActionItem[] = [
   { id: 9, label: '9. Notes' },
   { type: 'divider', label: 'Password Attacks' },
   { id: 10, label: "10. Wifi Handshake's" },
+  { id: 11, label: '11. Hashcat' },
   { id: 12, label: '12. Bruteforce' },
 ];
 
@@ -954,6 +955,378 @@ function WifiPanel({ sessionId }: { sessionId: number }) {
           <div className="bf-output" ref={outputRef}>
             {captureOutput.map((line, i) => (
               <div key={i} className={`bf-line${line.startsWith('[+]') ? ' bf-line-found' : ''}`}>
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ── Hashcat panel ─────────────────────────────────────────────────────────────
+
+interface HandshakeFile {
+  cap_path:   string;
+  hash_path:  string;
+  status:     'converted' | 'invalid' | 'already_converted';
+  hash_count: number;
+  essids:     string;
+}
+
+const HASH_TYPES = [
+  { value: 22000, label: '22000 — WPA-PBKDF2-PMKID+EAPOL (WiFi)' },
+  { value: 22001, label: '22001 — WPA-PBKDF2-PMKID only' },
+  { value: 1000,  label: '1000  — NTLM' },
+  { value: 5500,  label: '5500  — NetNTLMv1' },
+  { value: 5600,  label: '5600  — NetNTLMv2' },
+  { value: 13100, label: '13100 — Kerberos 5 TGS' },
+  { value: 1800,  label: '1800  — SHA-512 (Linux shadow)' },
+  { value: 500,   label: '500   — MD5crypt' },
+  { value: 0,     label: '0     — MD5' },
+  { value: 100,   label: '100   — SHA1' },
+];
+
+const ATTACK_MODES = [
+  { value: 0, label: '0 — Dictionary' },
+  { value: 3, label: '3 — Mask (brute-force)' },
+  { value: 6, label: '6 — Hybrid: Wordlist + Mask' },
+  { value: 7, label: '7 — Hybrid: Mask + Wordlist' },
+];
+
+const COMMON_MASKS = [
+  { label: '8 digits',         mask: '?d?d?d?d?d?d?d?d' },
+  { label: '8 lowercase',      mask: '?l?l?l?l?l?l?l?l' },
+  { label: '8 mixed+digit',    mask: '?u?l?l?l?l?l?d?d' },
+  { label: '10 digits',        mask: '?d?d?d?d?d?d?d?d?d?d' },
+  { label: '8 any char',       mask: '?a?a?a?a?a?a?a?a' },
+  { label: 'Phone (07XXXXXXXX)', mask: '07?d?d?d?d?d?d?d?d' },
+];
+
+function HashcatPanel({ sessionId }: { sessionId: number }) {
+  // Handshakes
+  const [handshakes,    setHandshakes]    = useState<HandshakeFile[]>([]);
+  const [rules,         setRules]         = useState<string[]>([]);
+  const [hsLoading,     setHsLoading]     = useState(false);
+  const [hsError,       setHsError]       = useState('');
+
+  // Form
+  const [hashFile,      setHashFile]      = useState('');
+  const [customHash,    setCustomHash]    = useState('');
+  const [hashType,      setHashType]      = useState(22000);
+  const [attackMode,    setAttackMode]    = useState(0);
+  const [wordlist,      setWordlist]      = useState('');
+  const [customWl,      setCustomWl]      = useState('');
+  const [rulesFile,     setRulesFile]     = useState('');
+  const [mask,          setMask]          = useState('');
+  const [workload,      setWorkload]      = useState(3);
+  const [deviceTypes,   setDeviceTypes]   = useState('');
+  const [optimized,     setOptimized]     = useState(true);
+  const [force,         setForce]         = useState(false);
+  const [customArgs,    setCustomArgs]    = useState('');
+
+  // Wordlists (reuse bruteforce endpoint)
+  const [passLists,     setPassLists]     = useState<WordlistEntry[]>([]);
+
+  // Job
+  const [running,       setRunning]       = useState(false);
+  const [output,        setOutput]        = useState<string[]>([]);
+  const [cracked,       setCracked]       = useState<string[]>([]);
+  const [jobDone,       setJobDone]       = useState(false);
+  const [jobError,      setJobError]      = useState('');
+  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  // Load handshakes + rules on mount
+  useEffect(() => {
+    loadHandshakes();
+    axios.get('/api/wordlists').then(res => {
+      setPassLists(res.data.passwords || []);
+      const first = (res.data.passwords || []).find((e: WordlistEntry) =>
+        e.group.startsWith('SecLists') && !e.group.includes('Combo'));
+      if (first) setWordlist(first.path);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadHandshakes = () => {
+    setHsLoading(true);
+    setHsError('');
+    axios.get(`/api/sessions/${sessionId}/hashcat/handshakes`)
+      .then(res => {
+        const hs: HandshakeFile[] = res.data.handshakes || [];
+        setHandshakes(hs);
+        setRules(res.data.rules || []);
+        // Auto-select first valid hash file
+        const valid = hs.find(h => h.hash_path && h.status !== 'invalid');
+        if (valid && !hashFile) setHashFile(valid.hash_path);
+      })
+      .catch(err => setHsError(err.response?.data?.error || err.message))
+      .finally(() => setHsLoading(false));
+  };
+
+  const startPolling = () => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await axios.get(`/api/sessions/${sessionId}/hashcat`);
+        setOutput(res.data.output || []);
+        setCracked(res.data.cracked || []);
+        if (res.data.error) setJobError(res.data.error);
+        if (res.data.status === 'done') {
+          setRunning(false);
+          setJobDone(true);
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+        }
+      } catch {}
+    }, 2000);
+  };
+
+  const handleStart = async () => {
+    setOutput([]);
+    setCracked([]);
+    setJobDone(false);
+    setJobError('');
+    setRunning(true);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/hashcat`, {
+        hash_file:        customHash || hashFile,
+        hash_type:        hashType,
+        attack_mode:      attackMode,
+        wordlist:         customWl  || wordlist,
+        rules_file:       rulesFile,
+        mask,
+        workload_profile: workload,
+        device_types:     deviceTypes,
+        optimized,
+        force,
+        custom_args:      customArgs,
+      });
+      startPolling();
+    } catch (err: any) {
+      setJobError(err.response?.data?.error || err.message);
+      setRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/hashcat`); } catch {}
+    clearInterval(pollRef.current!);
+    pollRef.current = null;
+    setRunning(false);
+    setJobDone(true);
+  };
+
+  const groupedPassOptions = () => {
+    const groups: Record<string, WordlistEntry[]> = {};
+    for (const e of passLists) {
+      if (e.group.includes('Combo')) continue;
+      (groups[e.group] = groups[e.group] || []).push(e);
+    }
+    return Object.entries(groups).map(([g, items]) => (
+      <optgroup key={g} label={g}>
+        {items.map(e => <option key={e.path} value={e.path}>{e.label}</option>)}
+      </optgroup>
+    ));
+  };
+
+  const statusBadge = (hs: HandshakeFile) => {
+    if (hs.status === 'invalid')          return <span className="hc-badge invalid">invalid — deleted</span>;
+    if (hs.status === 'converted')        return <span className="hc-badge converted">converted ({hs.hash_count} hash{hs.hash_count !== 1 ? 'es' : ''})</span>;
+    if (hs.status === 'already_converted') return <span className="hc-badge ready">ready ({hs.hash_count} hash{hs.hash_count !== 1 ? 'es' : ''})</span>;
+    return null;
+  };
+
+  const needsWordlist  = attackMode === 0 || attackMode === 6 || attackMode === 7;
+  const needsMask      = attackMode === 3 || attackMode === 6 || attackMode === 7;
+
+  return (
+    <div className="bf-panel">
+
+      {/* ── Captured Handshakes ── */}
+      <div className="bf-section">
+        <div className="bf-section-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span>Captured Handshakes</span>
+          <button className="hc-refresh-btn" onClick={loadHandshakes} disabled={hsLoading}>
+            {hsLoading ? 'Checking…' : '⟳ Validate & Convert'}
+          </button>
+        </div>
+        {hsError && <div className="bf-error">{hsError}</div>}
+        {handshakes.length === 0 && !hsLoading && (
+          <div className="hc-empty">No captured handshakes found for this session — use tab 10 to capture.</div>
+        )}
+        {handshakes.filter(h => h.status !== 'invalid').length > 0 && (
+          <table className="hc-hs-table">
+            <thead><tr><th>File</th><th>Status</th></tr></thead>
+            <tbody>
+              {handshakes.filter(h => h.status !== 'invalid').map((hs, i) => (
+                <tr key={i}
+                  className={`hc-hs-row${hashFile === hs.hash_path ? ' selected' : ''}`}
+                  onClick={() => { setHashFile(hs.hash_path); setCustomHash(''); }}>
+                  <td className="loot-mono hc-hs-path">{hs.hash_path || hs.cap_path}</td>
+                  <td>{statusBadge(hs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {handshakes.some(h => h.status === 'invalid') && (
+          <div className="hc-invalid-note">
+            {handshakes.filter(h => h.status === 'invalid').length} invalid capture(s) deleted automatically.
+          </div>
+        )}
+        <div className="bf-cred-col" style={{ marginTop: 6 }}>
+          <label className="bf-label">Hash file path (or custom)</label>
+          <input className="bf-text-input" placeholder="/path/to/custom.22000"
+            value={customHash} onChange={e => { setCustomHash(e.target.value); setHashFile(''); }} />
+        </div>
+      </div>
+
+      {/* ── Hash type ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Hash Type</div>
+        <select className="bf-select" value={hashType}
+          onChange={e => setHashType(parseInt(e.target.value))}>
+          {HASH_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+
+      {/* ── Attack mode ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Attack Mode</div>
+        <div className="bf-mode-tabs">
+          {ATTACK_MODES.map(m => (
+            <button key={m.value}
+              className={`bf-mode-tab${attackMode === m.value ? ' active' : ''}`}
+              onClick={() => setAttackMode(m.value)}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Wordlist */}
+        {needsWordlist && (
+          <div className="bf-cred-col" style={{ marginTop: 8 }}>
+            <label className="bf-label">Wordlist</label>
+            <select className="bf-select" value={wordlist}
+              onChange={e => { setWordlist(e.target.value); setCustomWl(''); }}>
+              <option value="">— select —</option>
+              {groupedPassOptions()}
+            </select>
+            <input className="bf-text-input" placeholder="or custom path…"
+              value={customWl} onChange={e => { setCustomWl(e.target.value); setWordlist(''); }} />
+          </div>
+        )}
+
+        {/* Rules (dictionary only) */}
+        {attackMode === 0 && (
+          <div className="bf-cred-col" style={{ marginTop: 8 }}>
+            <label className="bf-label">Rules file (optional)</label>
+            <select className="bf-select" value={rulesFile}
+              onChange={e => setRulesFile(e.target.value)}>
+              <option value="">None</option>
+              {rules.map(r => (
+                <option key={r} value={r}>{r.split('/').pop()}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Mask */}
+        {needsMask && (
+          <div className="bf-cred-col" style={{ marginTop: 8 }}>
+            <label className="bf-label">Mask</label>
+            <div className="bf-row" style={{ flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+              {COMMON_MASKS.map(m => (
+                <button key={m.mask} className="hc-mask-pill"
+                  onClick={() => setMask(m.mask)} title={m.mask}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <input className="bf-text-input" placeholder="e.g. ?d?d?d?d?d?d?d?d"
+              value={mask} onChange={e => setMask(e.target.value)} />
+            <div className="hc-mask-hint">?l=lower ?u=upper ?d=digit ?s=symbol ?a=all</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Options ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Options</div>
+        <div className="bf-row bf-row-gap">
+          <label className="bf-inline-label">Workload (-w)</label>
+          <select className="bf-select" style={{ minWidth: 180 }} value={workload}
+            onChange={e => setWorkload(parseInt(e.target.value))}>
+            <option value={1}>1 — Low (background)</option>
+            <option value={2}>2 — Default</option>
+            <option value={3}>3 — High (recommended)</option>
+            <option value={4}>4 — Nightmare (max)</option>
+          </select>
+          <label className="bf-inline-label">Device (-D)</label>
+          <select className="bf-select" style={{ minWidth: 130 }} value={deviceTypes}
+            onChange={e => setDeviceTypes(e.target.value)}>
+            <option value="">Auto</option>
+            <option value="1">1 — CPU</option>
+            <option value="2">2 — GPU</option>
+            <option value="1,2">1,2 — CPU + GPU</option>
+          </select>
+        </div>
+        <div className="bf-checkbox-grid" style={{ marginTop: 8 }}>
+          <label className="bf-check">
+            <input type="checkbox" checked={optimized} onChange={e => setOptimized(e.target.checked)} />
+            Optimized kernels (-O)
+          </label>
+          <label className="bf-check">
+            <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />
+            Force (--force, ignore warnings)
+          </label>
+        </div>
+        <div className="bf-cred-col" style={{ marginTop: 8 }}>
+          <label className="bf-label">Additional arguments</label>
+          <input className="bf-text-input" placeholder="e.g. --nonce-error-corrections 8"
+            value={customArgs} onChange={e => setCustomArgs(e.target.value)} />
+        </div>
+      </div>
+
+      {/* ── Controls ── */}
+      <div className="bf-controls">
+        {!running ? (
+          <button className="btn-run-attack" onClick={handleStart}
+            disabled={!(customHash || hashFile)}>
+            Start Cracking
+          </button>
+        ) : (
+          <button className="btn-stop-attack" onClick={handleStop}>Stop</button>
+        )}
+        {running && <span className="bf-status-running"><span className="btn-spinner" /> Running…</span>}
+        {jobDone && !running && <span className="bf-status-done">Done</span>}
+        {jobError && <span className="bf-error" style={{ marginLeft: 8 }}>{jobError}</span>}
+      </div>
+
+      {/* ── Cracked passwords ── */}
+      {cracked.length > 0 && (
+        <div className="bf-found-box">
+          <div className="bf-found-title">Passwords Cracked</div>
+          {cracked.map((p, i) => (
+            <div key={i} className="hc-cracked-entry">{p}</div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Output ── */}
+      {output.length > 0 && (
+        <div className="bf-output-wrap">
+          <div className="bf-output-title">Output</div>
+          <div className="bf-output" ref={outputRef}>
+            {output.map((line, i) => (
+              <div key={i} className={`bf-line${line.startsWith('[+]') || line.includes('Recovered') ? ' bf-line-found' : ''}`}>
                 {line}
               </div>
             ))}
@@ -1858,7 +2231,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -2610,6 +2983,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 onChange={e => handleNotesChange(e.target.value)}
                 spellCheck={false}
               />
+            </div>
+          )}
+
+          {/* ── Hashcat panel ── */}
+          {activeAction === 11 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Hashcat
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <HashcatPanel sessionId={sessionId} />
             </div>
           )}
 

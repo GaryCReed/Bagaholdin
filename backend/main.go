@@ -108,6 +108,11 @@ func main() {
 		r.Get("/sessions/{id}/bruteforce", handleGetBruteforce(db))
 		r.Delete("/sessions/{id}/bruteforce", handleStopBruteforce(db))
 		r.Get("/wordlists", handleGetWordlists())
+		// Hashcat
+		r.Get("/sessions/{id}/hashcat/handshakes", handleGetHashcatHandshakes(db))
+		r.Post("/sessions/{id}/hashcat", handleStartHashcat(db))
+		r.Get("/sessions/{id}/hashcat", handleGetHashcat(db))
+		r.Delete("/sessions/{id}/hashcat", handleStopHashcat(db))
 		// WiFi handshake capture
 		r.Get("/wifi/interfaces", handleGetWifiInterfaces())
 		r.Post("/wifi/monitor", handleEnableMonitor())
