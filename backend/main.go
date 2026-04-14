@@ -117,6 +117,11 @@ func main() {
 		r.Post("/sessions/{id}/sqlmap", handleStartSqlmap(db))
 		r.Get("/sessions/{id}/sqlmap", handleGetSqlmap(db))
 		r.Delete("/sessions/{id}/sqlmap", handleStopSqlmap(db))
+		// FeroxBuster
+		r.Get("/ferox/wordlists", handleGetFeroxWordlists())
+		r.Post("/sessions/{id}/ferox", handleStartFerox(db))
+		r.Get("/sessions/{id}/ferox", handleGetFerox(db))
+		r.Delete("/sessions/{id}/ferox", handleStopFerox(db))
 		// WiFi handshake capture
 		r.Get("/wifi/interfaces", handleGetWifiInterfaces())
 		r.Post("/wifi/monitor", handleEnableMonitor())

@@ -88,6 +88,7 @@ const ACTIONS: ActionItem[] = [
   { id: 11, label: '11. Hashcat' },
   { id: 12, label: '12. Bruteforce' },
   { id: 13, label: '13. SqlMap' },
+  { id: 14, label: '14. FeroxBuster' },
 ];
 
 // ── Quick command buttons ──
@@ -1347,6 +1348,463 @@ const SERVICES = [
   { group: 'Mail',     values: ['smtp','pop3','imap'] },
   { group: 'Database', values: ['mysql','postgres','mssql','oracle-listener'] },
 ];
+
+// ── FeroxBuster Panel ─────────────────────────────────────────────────────────
+
+interface FeroxWordlist { label: string; path: string; }
+interface FeroxResult   { status: number; method: string; size: number; words: number; lines: number; url: string; }
+
+const FEROX_STATUS_COLOR: Record<number, string> = {
+  200: '#5aca8a', 201: '#5aca8a', 204: '#5aca8a',
+  301: '#70a0d0', 302: '#70a0d0', 307: '#70a0d0', 308: '#70a0d0',
+  400: '#e0a040', 401: '#e07070', 403: '#e07070', 404: '#666666',
+  500: '#ca5a5a', 503: '#ca5a5a',
+};
+
+function feroxStatusColor(code: number): string {
+  return FEROX_STATUS_COLOR[code] ?? (code < 400 ? '#5aca8a' : code < 500 ? '#e0a040' : '#ca5a5a');
+}
+
+function FeroxPanel({ sessionId }: { sessionId: number }) {
+  // Target
+  const [url, setUrl]               = useState('');
+  const [protocol, setProtocol]     = useState('https');
+
+  // Wordlist
+  const [wordlists, setWordlists]   = useState<FeroxWordlist[]>([]);
+  const [wordlist, setWordlist]     = useState('');
+  const [customWl, setCustomWl]     = useState('');
+  const [useCustomWl, setUseCustomWl] = useState(false);
+
+  // Request
+  const [extensions, setExtensions] = useState('');
+  const [methods, setMethods]       = useState('GET');
+  const [headers, setHeaders]       = useState('');
+  const [cookies, setCookies]       = useState('');
+  const [userAgent, setUserAgent]   = useState('');
+  const [randomAgent, setRandomAgent] = useState(false);
+  const [addSlash, setAddSlash]     = useState(false);
+  const [data, setData]             = useState('');
+  const [dataJSON, setDataJSON]     = useState(false);
+  const [dataForm, setDataForm]     = useState(false);
+
+  // Proxy / composite
+  const [proxy, setProxy]           = useState('');
+  const [burpMode, setBurpMode]     = useState(false);
+  const [smart, setSmart]           = useState(false);
+  const [thorough, setThorough]     = useState(false);
+
+  // Scan settings
+  const [threads, setThreads]       = useState(50);
+  const [depth, setDepth]           = useState(4);
+  const [noRecursion, setNoRecursion] = useState(false);
+  const [forceRecursion, setForceRecursion] = useState(false);
+  const [scanLimit, setScanLimit]   = useState(0);
+  const [rateLimit, setRateLimit]   = useState(0);
+  const [timeLimit, setTimeLimit]   = useState('');
+  const [dontExtract, setDontExtract] = useState(false);
+
+  // Response filters
+  const [statusCodes, setStatusCodes]   = useState('');
+  const [filterStatus, setFilterStatus] = useState('404');
+  const [filterSize, setFilterSize]     = useState('');
+  const [filterWords, setFilterWords]   = useState('');
+  const [filterLines, setFilterLines]   = useState('');
+  const [filterRegex, setFilterRegex]   = useState('');
+  const [unique, setUnique]             = useState(false);
+  const [dontFilter, setDontFilter]     = useState(false);
+
+  // Client
+  const [timeout, setTimeoutVal]    = useState(7);
+  const [redirects, setRedirects]   = useState(false);
+  const [insecure, setInsecure]     = useState(false);
+
+  // Dynamic collection
+  const [collectExt, setCollectExt]   = useState(false);
+  const [collectBak, setCollectBak]   = useState(false);
+  const [collectWords, setCollectWords] = useState(false);
+
+  // Behaviour
+  const [autoTune, setAutoTune]     = useState(false);
+  const [autoBail, setAutoBail]     = useState(false);
+
+  // Output
+  const [verbosity, setVerbosity]   = useState(0);
+
+  // Extra
+  const [customArgs, setCustomArgs] = useState('');
+
+  // Job state
+  const [running, setRunning]       = useState(false);
+  const [output, setOutput]         = useState<string[]>([]);
+  const [found, setFound]           = useState<FeroxResult[]>([]);
+  const [jobDone, setJobDone]       = useState(false);
+  const [jobError, setJobError]     = useState('');
+
+  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  // Load wordlists + pre-fill URL
+  useEffect(() => {
+    axios.get('/api/ferox/wordlists').then(r => {
+      const wls: FeroxWordlist[] = r.data?.wordlists ?? [];
+      setWordlists(wls);
+      if (wls.length) setWordlist(wls[0].path);
+    }).catch(() => {});
+
+    axios.get(`/api/sessions/${sessionId}`).then(r => {
+      const host = r.data?.target_host;
+      if (host) setUrl(`http://${host}/`);
+    }).catch(() => {});
+  }, [sessionId]);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await axios.get(`/api/sessions/${sessionId}/ferox`);
+        const { status, output: out, found: f, error: e } = r.data;
+        setOutput(out ?? []);
+        setFound(f ?? []);
+        setJobError(e ?? '');
+        if (status === 'done') {
+          stopPolling();
+          setRunning(false);
+          setJobDone(true);
+        }
+      } catch { stopPolling(); setRunning(false); }
+    }, 2000);
+  };
+
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  useEffect(() => () => stopPolling(), []);
+
+  const handleStart = async () => {
+    setRunning(true); setJobDone(false); setJobError(''); setOutput([]); setFound([]);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/ferox`, {
+        url, protocol,
+        wordlist: useCustomWl ? customWl : wordlist,
+        extensions, methods, headers, cookies,
+        user_agent:      randomAgent ? '' : userAgent,
+        random_agent:    randomAgent,
+        add_slash:       addSlash,
+        data,
+        data_json:       dataJSON,
+        data_form:       dataForm,
+        proxy:           burpMode ? '' : proxy,
+        burp_mode:       burpMode,
+        smart, thorough,
+        threads, depth,
+        no_recursion:    noRecursion,
+        force_recursion: forceRecursion,
+        scan_limit:      scanLimit,
+        rate_limit:      rateLimit,
+        time_limit:      timeLimit,
+        dont_extract:    dontExtract,
+        status_codes:    statusCodes,
+        filter_status:   filterStatus,
+        filter_size:     filterSize,
+        filter_words:    filterWords,
+        filter_lines:    filterLines,
+        filter_regex:    filterRegex,
+        unique, dont_filter: dontFilter,
+        timeout, redirects, insecure,
+        collect_extensions: collectExt,
+        collect_backups:    collectBak,
+        collect_words:      collectWords,
+        auto_tune: autoTune, auto_bail: autoBail,
+        verbosity, custom_args: customArgs,
+      });
+      startPolling();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to start';
+      setJobError(msg);
+      setRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/ferox`); } catch { /* ignore */ }
+    stopPolling(); setRunning(false);
+  };
+
+  const feroxLineClass = (line: string) => {
+    if (/^\d{3}\s+\w+/.test(line)) {
+      const code = parseInt(line, 10);
+      if (code >= 200 && code < 300) return 'ferox-line ferox-line-2xx';
+      if (code >= 300 && code < 400) return 'ferox-line ferox-line-3xx';
+      if (code >= 400 && code < 500) return 'ferox-line ferox-line-4xx';
+      if (code >= 500) return 'ferox-line ferox-line-5xx';
+    }
+    if (line.includes('[!]') || line.includes('ERR')) return 'ferox-line ferox-line-err';
+    if (line.includes('[+]') || line.includes('[>]')) return 'ferox-line ferox-line-found';
+    return 'ferox-line';
+  };
+
+  return (
+    <div className="bf-panel">
+
+      {/* Target & Wordlist */}
+      <div className="bf-section">
+        <div className="bf-section-title">Target</div>
+        <div className="bf-row">
+          <span className="bf-inline-label">URL</span>
+          <input className="bf-text-input" value={url} onChange={e => setUrl(e.target.value)}
+            placeholder="http://target/" style={{flex:1}} />
+          <span className="bf-inline-label" style={{marginLeft:8}}>Protocol</span>
+          <select className="bf-select" value={protocol} onChange={e => setProtocol(e.target.value)} style={{minWidth:90}}>
+            <option value="https">https</option>
+            <option value="http">http</option>
+          </select>
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Wordlist</span>
+          <label className="bf-check" style={{marginLeft:4}}>
+            <input type="checkbox" checked={useCustomWl} onChange={e => setUseCustomWl(e.target.checked)} />
+            Custom path
+          </label>
+        </div>
+        {useCustomWl ? (
+          <div className="bf-row">
+            <input className="bf-text-input" value={customWl} onChange={e => setCustomWl(e.target.value)}
+              placeholder="/path/to/wordlist.txt" style={{flex:1}} />
+          </div>
+        ) : (
+          <div className="bf-row">
+            <select className="bf-select" value={wordlist} onChange={e => setWordlist(e.target.value)} style={{flex:1, maxWidth:600}}>
+              {wordlists.map(wl => <option key={wl.path} value={wl.path}>{wl.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Request settings */}
+      <div className="bf-section">
+        <div className="bf-section-title">Request</div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Extensions</span>
+          <input className="bf-text-input" value={extensions} onChange={e => setExtensions(e.target.value)}
+            placeholder="php, html, js, txt" style={{maxWidth:260}} />
+          <span className="bf-inline-label" style={{marginLeft:8}}>Methods</span>
+          <input className="bf-text-input" value={methods} onChange={e => setMethods(e.target.value)}
+            placeholder="GET, POST" style={{maxWidth:140}} />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Cookie</span>
+          <input className="bf-text-input" value={cookies} onChange={e => setCookies(e.target.value)}
+            placeholder="session=abc123; auth=token" style={{flex:1}} />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Headers</span>
+          <input className="bf-text-input" value={headers} onChange={e => setHeaders(e.target.value)}
+            placeholder="Authorization: Bearer token" style={{flex:1}} />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">User-Agent</span>
+          <input className="bf-text-input" value={userAgent} onChange={e => setUserAgent(e.target.value)}
+            placeholder="(leave blank for default)" style={{maxWidth:280}} disabled={randomAgent} />
+          <label className="bf-check" style={{marginLeft:8}}>
+            <input type="checkbox" checked={randomAgent} onChange={e => setRandomAgent(e.target.checked)} />
+            Random agent
+          </label>
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">POST data</span>
+          <input className="bf-text-input" value={data} onChange={e => setData(e.target.value)}
+            placeholder="key=value&other=thing" style={{maxWidth:300}} />
+          <label className="bf-check" style={{marginLeft:8}}>
+            <input type="checkbox" checked={dataForm} onChange={e => { setDataForm(e.target.checked); if (e.target.checked) setDataJSON(false); }} />
+            URL-encoded
+          </label>
+          <label className="bf-check">
+            <input type="checkbox" checked={dataJSON} onChange={e => { setDataJSON(e.target.checked); if (e.target.checked) setDataForm(false); }} />
+            JSON
+          </label>
+          <label className="bf-check" style={{marginLeft:8}}>
+            <input type="checkbox" checked={addSlash} onChange={e => setAddSlash(e.target.checked)} />
+            Append /
+          </label>
+        </div>
+      </div>
+
+      {/* Proxy / Composite */}
+      <div className="bf-section">
+        <div className="bf-section-title">Proxy &amp; Presets</div>
+        <div className="bf-row">
+          <label className="bf-check">
+            <input type="checkbox" checked={burpMode} onChange={e => { setBurpMode(e.target.checked); if (e.target.checked) setInsecure(true); }} />
+            Burp Suite (proxy 127.0.0.1:8080 + insecure)
+          </label>
+        </div>
+        {!burpMode && (
+          <div className="bf-row">
+            <span className="bf-inline-label">Proxy</span>
+            <input className="bf-text-input" value={proxy} onChange={e => setProxy(e.target.value)}
+              placeholder="http://127.0.0.1:8080" style={{maxWidth:280}} />
+          </div>
+        )}
+        <div className="bf-row">
+          <label className="bf-check">
+            <input type="checkbox" checked={thorough} onChange={e => { setThorough(e.target.checked); if (e.target.checked) setSmart(false); }} />
+            Thorough (smart + collect-extensions + scan-dir-listings)
+          </label>
+          <label className="bf-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={smart} onChange={e => { setSmart(e.target.checked); if (e.target.checked) setThorough(false); }} />
+            Smart (auto-tune + collect-words + collect-backups)
+          </label>
+        </div>
+      </div>
+
+      {/* Scan settings */}
+      <div className="bf-section">
+        <div className="bf-section-title">Scan Settings</div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Threads</span>
+          <input className="bf-num-input" type="number" min={1} max={500} value={threads}
+            onChange={e => setThreads(Number(e.target.value))} />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Depth</span>
+          <input className="bf-num-input" type="number" min={0} max={20} value={depth}
+            onChange={e => setDepth(Number(e.target.value))} disabled={noRecursion} title="0 = infinite" />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Scan limit</span>
+          <input className="bf-num-input" type="number" min={0} value={scanLimit}
+            onChange={e => setScanLimit(Number(e.target.value))} title="0 = no limit" />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Rate limit</span>
+          <input className="bf-num-input" type="number" min={0} value={rateLimit}
+            onChange={e => setRateLimit(Number(e.target.value))} title="req/s, 0 = no limit" />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Time limit</span>
+          <input className="bf-text-input" value={timeLimit} onChange={e => setTimeLimit(e.target.value)}
+            placeholder="10m / 1h (blank = no limit)" style={{maxWidth:200}} />
+        </div>
+        <div className="bf-checkbox-grid">
+          <label className="bf-check"><input type="checkbox" checked={noRecursion} onChange={e => setNoRecursion(e.target.checked)} /> No recursion</label>
+          <label className="bf-check"><input type="checkbox" checked={forceRecursion} onChange={e => setForceRecursion(e.target.checked)} disabled={noRecursion} /> Force recursion</label>
+          <label className="bf-check"><input type="checkbox" checked={dontExtract} onChange={e => setDontExtract(e.target.checked)} /> Don't extract links</label>
+          <label className="bf-check"><input type="checkbox" checked={autoTune} onChange={e => setAutoTune(e.target.checked)} /> Auto-tune (reduce rate on errors)</label>
+          <label className="bf-check"><input type="checkbox" checked={autoBail} onChange={e => setAutoBail(e.target.checked)} /> Auto-bail (stop on excessive errors)</label>
+          <label className="bf-check"><input type="checkbox" checked={dontFilter} onChange={e => setDontFilter(e.target.checked)} /> Don't filter wildcards</label>
+        </div>
+      </div>
+
+      {/* Response filters */}
+      <div className="bf-section">
+        <div className="bf-section-title">Response Filters</div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Allow codes</span>
+          <input className="bf-text-input" value={statusCodes} onChange={e => setStatusCodes(e.target.value)}
+            placeholder="200,301,302 (blank = all)" style={{maxWidth:200}} />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Deny codes</span>
+          <input className="bf-text-input" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            placeholder="404,403" style={{maxWidth:160}} />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Filter size</span>
+          <input className="bf-text-input" value={filterSize} onChange={e => setFilterSize(e.target.value)}
+            placeholder="bytes, e.g. 5120" style={{maxWidth:160}} />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Filter words</span>
+          <input className="bf-text-input" value={filterWords} onChange={e => setFilterWords(e.target.value)}
+            placeholder="word count" style={{maxWidth:140}} />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Filter lines</span>
+          <input className="bf-text-input" value={filterLines} onChange={e => setFilterLines(e.target.value)}
+            placeholder="line count" style={{maxWidth:140}} />
+        </div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Filter regex</span>
+          <input className="bf-text-input" value={filterRegex} onChange={e => setFilterRegex(e.target.value)}
+            placeholder="^ignore me$" style={{flex:1}} />
+          <label className="bf-check" style={{marginLeft:8}}>
+            <input type="checkbox" checked={unique} onChange={e => setUnique(e.target.checked)} />
+            Unique responses only
+          </label>
+        </div>
+      </div>
+
+      {/* Client & Collection */}
+      <div className="bf-section">
+        <div className="bf-section-title">Client &amp; Collection</div>
+        <div className="bf-row">
+          <span className="bf-inline-label">Timeout (s)</span>
+          <input className="bf-num-input" type="number" min={1} value={timeout}
+            onChange={e => setTimeoutVal(Number(e.target.value))} />
+          <span className="bf-inline-label" style={{marginLeft:12}}>Verbosity</span>
+          <select className="bf-select" value={verbosity} onChange={e => setVerbosity(Number(e.target.value))} style={{minWidth:80}}>
+            {[0,1,2,3,4].map(n => <option key={n} value={n}>{n === 0 ? '0 (default)' : `-${'v'.repeat(n)}`}</option>)}
+          </select>
+        </div>
+        <div className="bf-checkbox-grid">
+          <label className="bf-check"><input type="checkbox" checked={redirects} onChange={e => setRedirects(e.target.checked)} /> Follow redirects</label>
+          <label className="bf-check"><input type="checkbox" checked={insecure} onChange={e => setInsecure(e.target.checked)} /> Insecure (ignore TLS)</label>
+          <label className="bf-check"><input type="checkbox" checked={collectExt} onChange={e => setCollectExt(e.target.checked)} /> Collect extensions</label>
+          <label className="bf-check"><input type="checkbox" checked={collectBak} onChange={e => setCollectBak(e.target.checked)} /> Collect backups</label>
+          <label className="bf-check"><input type="checkbox" checked={collectWords} onChange={e => setCollectWords(e.target.checked)} /> Collect words</label>
+        </div>
+        <div className="bf-row" style={{marginTop:4}}>
+          <span className="bf-inline-label">Custom args</span>
+          <input className="bf-text-input" value={customArgs} onChange={e => setCustomArgs(e.target.value)}
+            placeholder="--extra-flags ..." style={{flex:1}} />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="bf-controls">
+        {!running ? (
+          <button className="btn-run-attack" onClick={handleStart}>▶ Run FeroxBuster</button>
+        ) : (
+          <button className="btn-stop-attack" onClick={handleStop}>■ Stop</button>
+        )}
+        {running  && <span className="bf-status-running"><span className="btn-spinner" /> Running…</span>}
+        {jobDone && !running && <span className="bf-status-done">Done — {found.length} URL{found.length !== 1 ? 's' : ''} found</span>}
+        {jobError && <span className="bf-error">{jobError}</span>}
+      </div>
+
+      {/* Results table */}
+      {found.length > 0 && (
+        <div className="bf-found-box">
+          <div className="bf-found-title">Discovered URLs ({found.length})</div>
+          <table className="bf-found-table ferox-result-table">
+            <thead>
+              <tr><th>Status</th><th>Method</th><th>Size</th><th>Words</th><th>Lines</th><th>URL</th></tr>
+            </thead>
+            <tbody>
+              {found.map((f, i) => (
+                <tr key={i}>
+                  <td style={{color: feroxStatusColor(f.status), fontWeight:700}}>{f.status}</td>
+                  <td>{f.method}</td>
+                  <td>{f.size}</td>
+                  <td>{f.words}</td>
+                  <td>{f.lines}</td>
+                  <td><a href={f.url} target="_blank" rel="noreferrer" className="ferox-url-link">{f.url}</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Output */}
+      {output.length > 0 && (
+        <div className="bf-output-wrap">
+          <div className="bf-output-title">Output</div>
+          <div className="bf-output" ref={outputRef}>
+            {output.map((line, i) => (
+              <div key={i} className={feroxLineClass(line)}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
 
 // ── SqlMap Panel ──────────────────────────────────────────────────────────────
 
@@ -2699,7 +3157,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -3503,6 +3961,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 </span>
               </div>
               <SqlmapPanel sessionId={sessionId} />
+            </div>
+          )}
+
+          {/* ── FeroxBuster panel ── */}
+          {activeAction === 14 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  FeroxBuster
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <FeroxPanel sessionId={sessionId} />
             </div>
           )}
 

@@ -2430,3 +2430,26 @@
 .sm-line-found  { color: #5aca8a; font-weight: 600; }
 .sm-line-warn   { color: #c0902a; }
 .sm-line-error  { color: #ca5a5a; }
+
+/* ── FeroxBuster Panel ── */
+/* (inherits .bf-panel, .bf-section, .bf-section-title, .bf-row, etc.) */
+
+.ferox-result-table td { word-break: break-all; }
+
+.ferox-url-link {
+  color: #70a0d0;
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.ferox-url-link:hover { text-decoration: underline; color: #90c0f0; }
+
+/* Ferox output line colours */
+.ferox-line        { color: #7a8a9a; white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
+.ferox-line-2xx    { color: #5aca8a; font-weight: 600; }
+.ferox-line-3xx    { color: #70a0d0; }
+.ferox-line-4xx    { color: #667788; }
+.ferox-line-5xx    { color: #ca5a5a; font-weight: 600; }
+.ferox-line-found  { color: #5aca8a; }
+.ferox-line-err    { color: #ca5a5a; }
