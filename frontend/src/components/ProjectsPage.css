@@ -334,3 +334,54 @@
   color: #e06c75;
   background-color: rgba(224, 108, 117, 0.15);
 }
+
+.btn-edit {
+  background: none;
+  border: none;
+  color: #585858;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.btn-edit:hover {
+  color: #4ec9b0;
+  background-color: rgba(78, 201, 176, 0.12);
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.project-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  flex: 1;
+}
+
+.project-edit-input {
+  background-color: #2d2d2d;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  color: #d4d4d4;
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.project-edit-input:focus {
+  border-color: #0e639c;
+}
+
+.project-edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}

@@ -81,6 +81,7 @@ func main() {
 		r.Get("/projects", handleGetProjects(db))
 		r.Post("/projects", handleCreateProject(db))
 		r.Get("/projects/{id}", handleGetProject(db))
+		r.Put("/projects/{id}", handleUpdateProject(db))
 		r.Delete("/projects/{id}", handleDeleteProject(db))
 		r.Get("/projects/{id}/sessions", handleGetProjectSessions(db))
 		r.Post("/projects/{id}/sessions", handleCreateProjectSession(db))
@@ -1375,6 +1376,42 @@ func handleGetProject(db *DB) http.HandlerFunc {
 			return
 		}
 		data, _ := encodeJSON(p)
+		fmt.Fprintf(w, `{"project":%s}`, data)
+	}
+}
+
+func handleUpdateProject(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		projectID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid project id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		var body struct {
+			Name         string `json:"name"`
+			NetworkRange string `json:"network_range"`
+		}
+		parseJSON(r, &body)
+		if strings.TrimSpace(body.Name) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"name required"}`)
+			return
+		}
+		proj, err := db.UpdateProject(projectID, claims.UserID, strings.TrimSpace(body.Name), strings.TrimSpace(body.NetworkRange))
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		data, _ := encodeJSON(proj)
 		fmt.Fprintf(w, `{"project":%s}`, data)
 	}
 }

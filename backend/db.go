@@ -426,6 +426,20 @@ func (m *MemoryDB) DeleteProject(projectID, userID int) error {
 	return nil
 }
 
+func (m *MemoryDB) UpdateProject(projectID, userID int, name, networkRange string) (*Project, error) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	p, ok := m.projects[projectID]
+	if !ok || p.UserID != userID {
+		return nil, fmt.Errorf("project not found")
+	}
+	p.Name = name
+	p.NetworkRange = networkRange
+	copy := *p
+	return &copy, nil
+}
+
 func (m *MemoryDB) GetProjectSessions(projectID, userID int) ([]Session, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -789,6 +803,25 @@ func (db *DB) DeleteProject(projectID, userID int) error {
 		return fmt.Errorf("project not found")
 	}
 	return nil
+}
+
+// UpdateProject updates a project's name and network range.
+func (db *DB) UpdateProject(projectID, userID int, name, networkRange string) (*Project, error) {
+	if db.isMemory {
+		return db.memory.UpdateProject(projectID, userID, name, networkRange)
+	}
+	p := &Project{}
+	err := db.conn.QueryRow(
+		db.rebind("UPDATE projects SET name = ?, network_range = ? WHERE id = ? AND user_id = ? RETURNING id, user_id, name, network_range, created_at"),
+		name, networkRange, projectID, userID,
+	).Scan(&p.ID, &p.UserID, &p.Name, &p.NetworkRange, &p.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("project not found")
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	return p, nil
 }
 
 // GetProjectHosts returns all persisted hosts for a project.

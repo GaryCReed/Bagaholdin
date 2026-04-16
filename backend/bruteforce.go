@@ -47,7 +47,8 @@ func getBruteJob(sessionID int) *BruteforceJob {
 // ── Request / response structs ────────────────────────────────────────────────
 
 type BruteforceRequest struct {
-	Service string `json:"service"`
+	TargetIP string `json:"target_ip"`
+	Service  string `json:"service"`
 
 	// Credential mode: "wordlist" | "combo" | "single"
 	Mode string `json:"mode"`
@@ -427,13 +428,6 @@ func handleStartBruteforce(db *DB) http.HandlerFunc {
 			return
 		}
 
-		session, err := db.GetSession(sessionID, claims.UserID)
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, `{"error":"session not found"}`)
-			return
-		}
-
 		// Reject if already running
 		if j := getBruteJob(sessionID); j != nil {
 			j.mu.Lock()
@@ -459,10 +453,22 @@ func handleStartBruteforce(db *DB) http.HandlerFunc {
 			return
 		}
 
+		// Resolve target: explicit IP takes priority; otherwise fall back to session's host
+		target := req.TargetIP
+		if target == "" {
+			session, err := db.GetSession(sessionID, claims.UserID)
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `{"error":"session not found — enter a target IP"}`)
+				return
+			}
+			target = session.TargetHost
+		}
+
 		job := &BruteforceJob{}
 		bruteJobs.Store(sessionID, job)
 
-		go runHydra(sessionID, session.TargetHost, req, db)
+		go runHydra(sessionID, target, req, db)
 
 		fmt.Fprint(w, `{"status":"started"}`)
 	}

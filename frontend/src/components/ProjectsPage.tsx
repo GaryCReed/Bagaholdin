@@ -35,6 +35,12 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
   const [localInterfaces, setLocalInterfaces] = useState<{ name: string; cidr: string; ip: string }[]>([]);
   const [activeAttack, setActiveAttack] = useState<number>(9);
 
+  // Editing state — id of project being edited, or null
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRange, setEditRange] = useState('');
+  const [editError, setEditError] = useState('');
+
   useEffect(() => {
     loadProjects();
     axios.get('/api/network')
@@ -68,6 +74,35 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
     }
   };
 
+  const startEdit = (p: Project, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingId(p.id);
+    setEditName(p.name);
+    setEditRange(p.network_range);
+    setEditError('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditError('');
+  };
+
+  const handleSaveEdit = async (id: number) => {
+    if (!editName.trim()) { setEditError('Name required'); return; }
+    setEditError('');
+    try {
+      const res = await axios.put(`/api/projects/${id}`, {
+        name: editName.trim(),
+        network_range: editRange.trim(),
+      });
+      setProjects(prev => prev.map(p => p.id === id ? res.data.project : p));
+      setEditingId(null);
+    } catch (err: any) {
+      setEditError(err.response?.data?.error || err.message || 'Failed to save');
+    }
+  };
+
   const clearSessionLocalStorage = (sessionId: number) => {
     const keys = ['vuln', 'cve', 'enum', 'os', 'msf-sessions', 'remarks'];
     keys.forEach(k => localStorage.removeItem(`session-${sessionId}-${k}`));
@@ -76,7 +111,6 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
   const handleDelete = async (id: number) => {
     try {
       const res = await axios.delete(`/api/projects/${id}`);
-      // Clear localStorage for every session that belonged to this project.
       const deletedIds: number[] = res.data?.deleted_session_ids || [];
       deletedIds.forEach(clearSessionLocalStorage);
       loadProjects();
@@ -144,24 +178,44 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
             <div className="project-cards">
               {projects.map((p) => (
                 <div key={p.id} className="project-card">
-                  <Link to={`/project/${p.id}`} className="project-card-body">
-                    <div className="project-card-name">{p.name}</div>
-                    {p.network_range && (
-                      <div className="project-card-range">{p.network_range}</div>
-                    )}
-                  </Link>
-                  <div className="project-card-actions">
-                    <Link to={`/project/${p.id}`} className="btn-open">
-                      Open →
-                    </Link>
-                    <button
-                      className="btn-kill"
-                      title="Delete project"
-                      onClick={() => handleDelete(p.id)}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  {editingId === p.id ? (
+                    <div className="project-edit-form">
+                      <input
+                        className="project-edit-input"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        placeholder="Project name"
+                        autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(p.id); if (e.key === 'Escape') cancelEdit(); }}
+                      />
+                      <input
+                        className="project-edit-input"
+                        value={editRange}
+                        onChange={e => setEditRange(e.target.value)}
+                        placeholder="Network range (optional)"
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(p.id); if (e.key === 'Escape') cancelEdit(); }}
+                      />
+                      {editError && <div className="form-error">{editError}</div>}
+                      <div className="project-edit-actions">
+                        <button className="btn-primary btn-sm" onClick={() => handleSaveEdit(p.id)}>Save</button>
+                        <button className="btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Link to={`/project/${p.id}`} className="project-card-body">
+                        <div className="project-card-name">{p.name}</div>
+                        {p.network_range && (
+                          <div className="project-card-range">{p.network_range}</div>
+                        )}
+                      </Link>
+                      <div className="project-card-actions">
+                        <Link to={`/project/${p.id}`} className="btn-open">Open →</Link>
+                        <button className="btn-edit" title="Edit project" onClick={e => startEdit(p, e)}>✎</button>
+                        <button className="btn-kill" title="Delete project" onClick={() => handleDelete(p.id)}>✕</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

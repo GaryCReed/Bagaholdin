@@ -2124,6 +2124,7 @@ interface FoundCred { login: string; password: string; host: string; port: numbe
 
 export function BruteforcePanel({ sessionId }: { sessionId: number }) {
   // Form state
+  const [targetIP,      setTargetIP]      = useState('');
   const [service,       setService]       = useState('ssh');
   const [mode,          setMode]          = useState<'wordlist'|'combo'|'single'>('wordlist');
   const [userFile,      setUserFile]      = useState('');
@@ -2213,6 +2214,7 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
 
     try {
       await axios.post(`/api/sessions/${sessionId}/bruteforce`, {
+        target_ip: targetIP.trim(),
         service, mode,
         user_file:      resolvedUserFile,
         pass_file:      resolvedPassFile,
@@ -2258,6 +2260,21 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
 
   return (
     <div className="bf-panel">
+
+      {/* ── Target ── */}
+      <div className="bf-section">
+        <div className="bf-section-title">Target</div>
+        <div className="bf-row">
+          <input
+            className="bf-text-input"
+            type="text"
+            placeholder="IP address (e.g. 192.168.1.1)"
+            value={targetIP}
+            onChange={e => setTargetIP(e.target.value)}
+            style={{ flex: 1 }}
+          />
+        </div>
+      </div>
 
       {/* ── Service ── */}
       <div className="bf-section">
