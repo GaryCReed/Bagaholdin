@@ -149,6 +149,30 @@ func AppendBruteforceCredential(sessionID int, target, username, password, servi
 	return saveLootDocument(doc)
 }
 
+// AppendWifiHandshakeLoot records a captured WPA handshake directly as a loot item.
+func AppendWifiHandshakeLoot(sessionID int, target, ssid, bssid, capFile, hashFile string, hashCount int) error {
+	lootMu.Lock()
+	defer lootMu.Unlock()
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	ts := time.Now().UTC().Format(time.RFC3339)
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "wifi_handshake",
+		Source:    "handshake_capture",
+		Timestamp: ts,
+		Fields: lootFields(
+			"ssid", ssid,
+			"bssid", bssid,
+			"cap_file", capFile,
+			"hash_file", hashFile,
+			"hashes", fmt.Sprintf("%d", hashCount),
+		),
+	})
+	return saveLootDocument(doc)
+}
+
 // AppendLoot parses cmd+output for useful loot and appends to the session's loot.xml.
 func AppendLoot(sessionID int, target, cmd, output string) error {
 	items := extractLoot(cmd, output)

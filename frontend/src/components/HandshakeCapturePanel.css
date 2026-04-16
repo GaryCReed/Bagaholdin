@@ -1,0 +1,291 @@
+.hcp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hcp-section {
+  background: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hcp-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9cdcfe;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hcp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hcp-label {
+  font-size: 12px;
+  color: #858585;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.hcp-select {
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #d4d4d4;
+  min-width: 160px;
+}
+
+.hcp-select-sm { min-width: 120px; }
+
+.hcp-num {
+  width: 70px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #d4d4d4;
+}
+
+.hcp-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #d4d4d4;
+  cursor: pointer;
+}
+
+.hcp-monitor-btns { gap: 12px; }
+
+.hcp-monitor-active {
+  font-size: 13px;
+  color: #4ec9b0;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+.hcp-btn-refresh {
+  background: transparent;
+  border: 1px solid #3e3e42;
+  color: #858585;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.15s;
+}
+.hcp-btn-refresh:hover { color: #d4d4d4; }
+
+.hcp-btn-managed {
+  background: transparent;
+  border: 1px solid #3e3e42;
+  color: #858585;
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.hcp-btn-managed:hover:not(:disabled) { color: #d4d4d4; border-color: #858585; }
+.hcp-btn-managed:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.hcp-error {
+  font-size: 12px;
+  color: #e06c75;
+}
+
+.hcp-hint {
+  font-size: 11px;
+  color: #585858;
+}
+
+.hcp-countdown {
+  font-size: 11px;
+  color: #858585;
+  font-family: 'Courier New', monospace;
+}
+
+.hcp-scanning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.hcp-mono-out {
+  font-size: 11px;
+  color: #858585;
+  font-family: 'Courier New', monospace;
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  padding: 8px 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* ── Spinner ── */
+.hcp-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #3e3e42;
+  border-top-color: #4ec9b0;
+  border-radius: 50%;
+  animation: hcp-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes hcp-spin { to { transform: rotate(360deg); } }
+
+/* ── AP table ── */
+.hcp-ap-wrap {
+  overflow-x: auto;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+}
+
+.hcp-ap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.hcp-ap-table th {
+  background: #2d2d2d;
+  color: #858585;
+  font-weight: 600;
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid #3e3e42;
+  white-space: nowrap;
+}
+
+.hcp-sort-th {
+  cursor: pointer;
+  user-select: none;
+}
+.hcp-sort-th:hover { color: #d4d4d4; }
+
+.hcp-ap-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  color: #d4d4d4;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.hcp-ap-table tr:last-child td { border-bottom: none; }
+.hcp-ap-table tbody tr { cursor: pointer; }
+.hcp-ap-table tbody tr:hover { background: #2a2d2e; }
+.hcp-selected { background: rgba(14, 99, 156, 0.18) !important; }
+
+.hcp-td-essid { color: #d4d4d4 !important; font-weight: 600; }
+.hcp-td-bssid { color: #858585 !important; }
+
+.hcp-pwr-strong { color: #4ec9b0 !important; }
+.hcp-pwr-med    { color: #ce9178 !important; }
+.hcp-pwr-weak   { color: #585858 !important; }
+
+/* ── Capture output ── */
+.hcp-out-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+.hcp-out-title {
+  font-size: 11px;
+  color: #858585;
+  font-weight: 600;
+}
+
+.hcp-out {
+  background: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  padding: 8px 10px;
+  height: 200px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.hcp-line       { color: #858585; }
+.hcp-line-found { color: #4ec9b0; }
+.hcp-line-error { color: #e06c75; }
+.hcp-line-info  { color: #4fc1ff; }
+.hcp-line-diag  { color: #585858; font-style: italic; }
+
+.hcp-out-sm { height: 80px; }
+
+/* ── Handshakes found ── */
+.hcp-hs-found {
+  background: rgba(78, 201, 176, 0.08);
+  border: 1px solid rgba(78, 201, 176, 0.3);
+  border-radius: 3px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hcp-hs-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4ec9b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hcp-hs-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.hcp-hs-check { color: #4ec9b0; }
+
+.hcp-hs-text {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #d4d4d4;
+  word-break: break-all;
+}
+
+/* ── Reuse attack buttons from SessionDetail ── */
+.btn-run-attack {
+  background: #1e4a2e;
+  border: 1px solid #3a7a5a;
+  border-radius: 5px;
+  color: #5aca8a;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-run-attack:hover:not(:disabled) { background: #235533; }
+.btn-run-attack:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-stop-attack {
+  background: #4a1e1e;
+  border: 1px solid #8a3a3a;
+  border-radius: 5px;
+  color: #e07070;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-stop-attack:hover { background: #5a2222; }

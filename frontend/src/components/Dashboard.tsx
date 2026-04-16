@@ -60,6 +60,7 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
   const [selectedHosts, setSelectedHosts] = useState<Set<string>>(new Set());
   const [addingMultiple, setAddingMultiple] = useState(false);
 
+
   useEffect(() => {
     loadSessions();
     loadHosts();

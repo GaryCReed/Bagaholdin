@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +20,7 @@ type HashcatJob struct {
 	mu      sync.Mutex
 	cmd     *exec.Cmd
 	output  []string
-	cracked []string // "ESSID: password"
+	cracked []CrackedEntry
 	done    bool
 	err     string
 }
@@ -168,9 +167,11 @@ type HashcatRequest struct {
 	Mask          string `json:"mask"`
 	WorkloadProfile int  `json:"workload_profile"` // 1-4
 	DeviceTypes   string `json:"device_types"`     // "1" CPU "2" GPU "1,2" both
-	Optimized     bool   `json:"optimized"`
-	Force         bool   `json:"force"`
-	CustomArgs    string `json:"custom_args"`
+	Optimized      bool   `json:"optimized"`
+	Force          bool   `json:"force"`
+	PotfileDisable bool   `json:"potfile_disable"`
+	ShowPotfile    bool   `json:"show_potfile"`
+	CustomArgs     string `json:"custom_args"`
 }
 
 func buildHashcatArgs(req HashcatRequest, outFile string) ([]string, error) {
@@ -230,12 +231,19 @@ func buildHashcatArgs(req HashcatRequest, outFile string) ([]string, error) {
 	if req.Force {
 		args = append(args, "--force")
 	}
+	if req.PotfileDisable {
+		args = append(args, "--potfile-disable")
+	}
+	if req.ShowPotfile {
+		args = append(args, "--show")
+	}
 
 	// Status updates every 10 seconds + outfile
+	// Format 3 = hash:plain so we can extract BSSID/ESSID from WPA hashes
 	args = append(args,
 		"--status", "--status-timer=10",
 		"--outfile", outFile,
-		"--outfile-format", "2", // plain password only
+		"--outfile-format", "3",
 	)
 
 	if req.CustomArgs != "" {
@@ -247,18 +255,100 @@ func buildHashcatArgs(req HashcatRequest, outFile string) ([]string, error) {
 
 // ── Output parsing ────────────────────────────────────────────────────────────
 
-var crackedLineRe = regexp.MustCompile(`^[A-Fa-f0-9*:]{20,}:(.+)$`)
+// CrackedEntry holds a single cracked result from the hashcat outfile.
+type CrackedEntry struct {
+	Raw      string `json:"raw"`       // full hash:password line
+	Display  string `json:"display"`   // human-friendly e.g. "MyWifi (aa:bb:cc:dd:ee:ff): password"
+	BSSID    string `json:"bssid"`     // AP MAC (WPA only)
+	ESSID    string `json:"essid"`     // network name (WPA only)
+	Password string `json:"password"`  // plaintext password
+}
 
-func parseHashcatCracked(outFile string) []string {
+// hexToMAC converts "aabbccddeeff" → "aa:bb:cc:dd:ee:ff"
+func hexToMAC(h string) string {
+	if len(h) != 12 {
+		return h
+	}
+	return h[0:2] + ":" + h[2:4] + ":" + h[4:6] + ":" + h[6:8] + ":" + h[8:10] + ":" + h[10:12]
+}
+
+// hexToASCII decodes a hex string to ASCII, falling back to the raw hex if invalid.
+func hexToASCII(h string) string {
+	if len(h)%2 != 0 {
+		return h
+	}
+	var b []byte
+	for i := 0; i < len(h); i += 2 {
+		var v byte
+		_, err := fmt.Sscanf(h[i:i+2], "%02x", &v)
+		if err != nil || v == 0 {
+			return h // not valid ASCII
+		}
+		b = append(b, v)
+	}
+	return string(b)
+}
+
+// parseOutfileLine parses a single line from hashcat outfile format 3 (hash:plain).
+// For WPA*01/02 hashes it extracts BSSID, ESSID, and password.
+func parseOutfileLine(line string) CrackedEntry {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return CrackedEntry{}
+	}
+
+	// Find the last colon to split hash from password.
+	// WPA lines look like WPA*02*...*aabbccddeeff*...:password
+	lastColon := strings.LastIndex(line, ":")
+	if lastColon < 0 {
+		return CrackedEntry{Raw: line, Display: line, Password: line}
+	}
+	hashPart := line[:lastColon]
+	password := line[lastColon+1:]
+
+	entry := CrackedEntry{
+		Raw:      line,
+		Password: password,
+	}
+
+	// Try to parse WPA hash fields: WPA*01*pmkid*ap_mac*client_mac*essid_hex*...
+	if strings.HasPrefix(hashPart, "WPA*") {
+		fields := strings.Split(hashPart, "*")
+		if len(fields) >= 6 {
+			bssid := hexToMAC(strings.ToLower(fields[3]))
+			essid := hexToASCII(fields[5])
+			entry.BSSID = bssid
+			entry.ESSID = essid
+			entry.Display = fmt.Sprintf("%s (%s): %s", essid, bssid, password)
+			return entry
+		}
+	}
+
+	// Non-WPA: show hash truncated + password
+	truncated := hashPart
+	if len(truncated) > 40 {
+		truncated = truncated[:40] + "…"
+	}
+	entry.Display = fmt.Sprintf("%s : %s", truncated, password)
+	return entry
+}
+
+func parseHashcatCracked(outFile string) []CrackedEntry {
 	data, err := os.ReadFile(outFile)
 	if err != nil {
 		return nil
 	}
-	var results []string
+	var results []CrackedEntry
+	seen := map[string]bool{}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			results = append(results, line)
+		if line == "" || seen[line] {
+			continue
+		}
+		seen[line] = true
+		entry := parseOutfileLine(line)
+		if entry.Raw != "" {
+			results = append(results, entry)
 		}
 	}
 	return results
@@ -399,8 +489,13 @@ func handleStartHashcat(db *DB) http.HandlerFunc {
 
 			cmd.Wait()
 
-			// Read cracked passwords from outfile
+			// Read cracked passwords from outfile and save to loot
 			cracked := parseHashcatCracked(outFile)
+			for _, entry := range cracked {
+				if entry.BSSID != "" && entry.Password != "" {
+					AppendBruteforceCredential(sessionID, entry.BSSID, entry.ESSID, entry.Password, "WPA")
+				}
+			}
 			job.mu.Lock()
 			job.cracked = cracked
 			if len(cracked) > 0 {
@@ -444,20 +539,20 @@ func handleGetHashcat(db *DB) http.HandlerFunc {
 		job.mu.Lock()
 		output := make([]string, len(job.output))
 		copy(output, job.output)
-		cracked := make([]string, len(job.cracked))
+		cracked := make([]CrackedEntry, len(job.cracked))
 		copy(cracked, job.cracked)
 		done := job.done
 		jobErr := job.err
 		job.mu.Unlock()
 
-		// Merge with live outfile reads
+		// Merge with live outfile reads (dedup by raw line)
 		liveCracked := parseHashcatCracked(outFile)
 		crackedSet := map[string]bool{}
 		for _, c := range cracked {
-			crackedSet[c] = true
+			crackedSet[c.Raw] = true
 		}
 		for _, c := range liveCracked {
-			if !crackedSet[c] {
+			if !crackedSet[c.Raw] {
 				cracked = append(cracked, c)
 			}
 		}

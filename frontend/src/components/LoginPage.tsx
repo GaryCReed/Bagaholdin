@@ -10,6 +10,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [sudoPassword, setSudoPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const payload: any = { username, password };
+      const payload: any = { username, password, sudo_password: sudoPassword };
       if (isRegister) payload.email = email;
 
       await axios.post(endpoint, payload);
@@ -82,6 +83,18 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="sudo-password">System Password (sudo)</label>
+            <input
+              type="password"
+              id="sudo-password"
+              value={sudoPassword}
+              onChange={(e) => setSudoPassword(e.target.value)}
+              placeholder="Local system password for privileged tools"
               required
             />
           </div>

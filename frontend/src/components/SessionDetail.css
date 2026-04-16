@@ -1373,7 +1373,10 @@
 .loot-user  { background: #1a2a1a; color: #70c070; border-bottom: 1px solid #2a4a2a; }
 .loot-priv  { background: #2a2a1a; color: #d0b060; border-bottom: 1px solid #4a4a2a; }
 .loot-net   { background: #1a2a2a; color: #60c0c0; border-bottom: 1px solid #2a4a4a; }
+.loot-wifi  { background: #1a1e2a; color: #4ec9b0; border-bottom: 1px solid #2a4040; }
 .loot-other { background: #1e1e2e; color: #a0a0c0; border-bottom: 1px solid #2a2a4a; }
+
+.loot-path  { font-size: 10px; color: #858585 !important; word-break: break-all; max-width: 260px; }
 
 .loot-table {
   width: 100%;
@@ -1871,6 +1874,100 @@
   padding: 4px 10px;
 }
 
+/* ── Handshake Upload Panel ─────────────────────────────────────────────────── */
+
+.hs-drop-zone {
+  border: 2px dashed #2a4060;
+  border-radius: 8px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: #080e18;
+}
+.hs-drop-zone:hover,
+.hs-drop-zone.drag-over {
+  border-color: #4a8060;
+  background: #0a1420;
+}
+.hs-drop-icon {
+  font-size: 28px;
+  color: #3a6050;
+  margin-bottom: 8px;
+}
+.hs-drop-text {
+  color: #a0bcd0;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.hs-drop-hint {
+  color: #4a6070;
+  font-size: 11px;
+}
+
+.hs-file-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+.hs-file-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.hs-file-table th {
+  text-align: left;
+  color: #5a8a6a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-bottom: 1px solid #1e2a38;
+  white-space: nowrap;
+}
+.hs-file-table td {
+  padding: 6px 10px;
+  color: #b0c8d8;
+  border-bottom: 1px solid #0e1520;
+  vertical-align: middle;
+}
+.hs-file-row:hover { background: #0c1828; }
+.hs-file-name { color: #d0d8e8; font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hs-file-size { color: #6a8898; font-size: 11px; }
+.hs-networks { color: #8ab8d8; text-align: center; }
+
+.hs-status-processing { color: #8898a8; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.hs-status-valid   { color: #5aca8a; font-size: 11px; font-weight: 600; }
+.hs-status-invalid { color: #c07070; font-size: 11px; }
+
+.hs-actions { display: flex; align-items: center; gap: 6px; }
+.hs-btn-download {
+  display: inline-block;
+  padding: 3px 8px;
+  background: #1a3a28;
+  border: 1px solid #2a5a3a;
+  border-radius: 3px;
+  color: #5aca8a;
+  font-size: 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.hs-btn-download:hover { background: #1e4a30; }
+.hs-btn-delete {
+  padding: 3px 7px;
+  background: #2a1a1a;
+  border: 1px solid #4a2a2a;
+  border-radius: 3px;
+  color: #c07070;
+  font-size: 11px;
+  cursor: pointer;
+}
+.hs-btn-delete:hover { background: #3a2020; }
+
+.hs-summary {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #4a6070;
+}
+
 .wifi-mon-output {
   background: #080d14;
   border: 1px solid #1a2430;
@@ -1930,6 +2027,14 @@
 .wifi-bssid  { color: #8898a8; font-size: 11px; }
 .wifi-ch     { color: #d0a060; text-align: center; }
 .wifi-beacons { color: #6a8a9a; text-align: right; }
+.wifi-clients { color: #8ab8d8; text-align: center; }
+
+.wifi-sort-th {
+  cursor: pointer;
+  user-select: none;
+}
+.wifi-sort-th:hover { color: #8ac8a8; }
+.wifi-sort-arrow { font-size: 10px; margin-left: 2px; }
 
 /* Signal strength bar */
 .wifi-signal-bar-wrap {
@@ -2028,6 +2133,56 @@
   color: #888;
   margin-bottom: 4px;
 }
+
+.hc-dir-hint { color: #4a6070; font-size: 11px; font-weight: 400; margin-left: 6px; }
+
+/* Hash file browse */
+.hc-hash-input-row { display: flex; align-items: center; gap: 6px; }
+.hc-hash-input     { flex: 1; }
+.hc-browse-wrap    { position: relative; }
+
+.hc-browse-btn {
+  padding: 6px 12px;
+  background: #1a2a3a;
+  border: 1px solid #2a4a6a;
+  border-radius: 4px;
+  color: #70a0d0;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hc-browse-btn:hover { background: #1e3040; }
+
+.hc-browse-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 380px;
+  background: #0e1a28;
+  border: 1px solid #2a4a6a;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 200;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.hc-browse-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #1a2a3a;
+}
+.hc-browse-item:last-child { border-bottom: none; }
+.hc-browse-item:hover { background: #1a2a3a; }
+.hc-browse-name { color: #d0d8e8; font-size: 12px; font-weight: 500; }
+.hc-browse-path { color: #5a8a9a; font-size: 10px; font-family: 'Courier New', monospace; margin-top: 2px; }
+.hc-browse-empty { color: #4a6070; font-size: 12px; padding: 12px; text-align: center; }
+
+/* Handshake table columns */
+.hc-hs-origname { color: #d0d8e8; font-weight: 500; }
+.hc-hs-nets     { color: #8ab8d8; text-align: center; }
+.hc-hs-path     { color: #6a8898; font-size: 10px; }
 
 .hc-hs-table {
   width: 100%;
@@ -2237,9 +2392,17 @@
 }
 
 .hc-cracked-entry {
-  color: #6ad06a;
-  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid #1a2a1a;
+  font-size: 12px;
 }
+.hc-cracked-entry:last-child { border-bottom: none; }
+.hc-cracked-essid { color: #d0d8e8; font-weight: 600; min-width: 120px; }
+.hc-cracked-bssid { color: #6a8898; font-family: 'Courier New', monospace; font-size: 11px; }
+.hc-cracked-pass  { color: #5aca8a; font-family: 'Courier New', monospace; font-weight: 600; }
 
 .hc-output {
   background: #0d0d0d;

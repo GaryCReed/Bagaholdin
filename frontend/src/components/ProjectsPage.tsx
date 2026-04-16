@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import './ProjectsPage.css';
+import {
+  HandshakeUploadPanel,
+  HashcatPanel,
+  BruteforcePanel,
+  SqlmapPanel,
+  FeroxPanel,
+} from './SessionDetail';
+import HandshakeCapturePanel from './HandshakeCapturePanel';
+
+// Fixed virtual session ID for project-page password attacks (not tied to a real session)
+const ATTACKS_VIRTUAL_SESSION = 99999;
 
 interface ProjectsPageProps {
   onLogout: () => void;
@@ -22,6 +33,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
   const [networkRange, setNetworkRange] = useState('');
   const [createError, setCreateError] = useState('');
   const [localInterfaces, setLocalInterfaces] = useState<{ name: string; cidr: string; ip: string }[]>([]);
+  const [activeAttack, setActiveAttack] = useState<number>(9);
 
   useEffect(() => {
     loadProjects();
@@ -93,6 +105,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
       </header>
 
       <div className="projects-body">
+        <div className="projects-main-row">
         <div className="projects-panel">
           <div className="panel-heading">
             <h2>Projects</h2>
@@ -153,6 +166,40 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
               ))}
             </div>
           )}
+        </div>
+        </div>{/* end projects-main-row */}
+
+        {/* ── Password Attacks ── */}
+        <div className="attacks-panel">
+          <div className="attacks-panel-heading">
+            <h2>Password Attacks</h2>
+          </div>
+          <div className="attacks-tabs">
+            {[
+              { id: 9,  label: "Handshake Capture" },
+              { id: 10, label: "Wifi Handshakes" },
+              { id: 11, label: "Hashcat" },
+              { id: 12, label: "Bruteforce" },
+              { id: 13, label: "SqlMap" },
+              { id: 14, label: "FeroxBuster" },
+            ].map(t => (
+              <button
+                key={t.id}
+                className={`attacks-tab${activeAttack === t.id ? ' active' : ''}`}
+                onClick={() => setActiveAttack(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="attacks-content">
+            {activeAttack === 9  && <HandshakeCapturePanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+            {activeAttack === 10 && <HandshakeUploadPanel />}
+            {activeAttack === 11 && <HashcatPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+            {activeAttack === 12 && <BruteforcePanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+            {activeAttack === 13 && <SqlmapPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+            {activeAttack === 14 && <FeroxPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+          </div>
         </div>
       </div>
     </div>

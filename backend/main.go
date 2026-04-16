@@ -122,10 +122,16 @@ func main() {
 		r.Post("/sessions/{id}/ferox", handleStartFerox(db))
 		r.Get("/sessions/{id}/ferox", handleGetFerox(db))
 		r.Delete("/sessions/{id}/ferox", handleStopFerox(db))
-		// WiFi handshake capture
+		// Handshake upload
+		r.Post("/wifi/handshakes/upload", handleUploadHandshake())
+		r.Get("/wifi/handshakes", handleListHandshakes())
+		r.Get("/wifi/handshakes/{name}/download", handleDownloadHandshake())
+		r.Delete("/wifi/handshakes/{name}", handleDeleteHandshake())
+		// WiFi capture workflow
 		r.Get("/wifi/interfaces", handleGetWifiInterfaces())
 		r.Post("/wifi/monitor", handleEnableMonitor())
 		r.Delete("/wifi/monitor", handleDisableMonitor())
+		r.Post("/wifi/managed", handleEnableManaged())
 		r.Post("/sessions/{id}/wifi/scan", handleStartWifiScan(db))
 		r.Get("/sessions/{id}/wifi/scan", handleGetWifiScan(db))
 		r.Delete("/sessions/{id}/wifi/scan", handleStopWifiScan(db))
@@ -161,9 +167,10 @@ func handleRegister(db *DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		var req struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-			Password string `json:"password"`
+			Username      string `json:"username"`
+			Email         string `json:"email"`
+			Password      string `json:"password"`
+			SudoPassword  string `json:"sudo_password"`
 		}
 
 		if err := parseJSON(r, &req); err != nil {
@@ -178,12 +185,26 @@ func handleRegister(db *DB) http.HandlerFunc {
 			return
 		}
 
+		if req.SudoPassword == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"system password is required for privileged operations"}`)
+			return
+		}
+
+		if err := ValidateSudoPassword(req.SudoPassword); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, `{"error":"system password invalid: %s"}`, err.Error())
+			return
+		}
+
 		user, err := db.CreateUser(req.Username, req.Email, req.Password)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
 			return
 		}
+
+		SetSudoPassword(user.ID, req.SudoPassword)
 
 		token, err := generateToken(user.ID, user.Username)
 		if err != nil {
@@ -203,13 +224,20 @@ func handleLogin(db *DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		var req struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
+			Username     string `json:"username"`
+			Password     string `json:"password"`
+			SudoPassword string `json:"sudo_password"`
 		}
 
 		if err := parseJSON(r, &req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, `{"error":"Invalid request"}`)
+			return
+		}
+
+		if req.SudoPassword == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"system password is required"}`)
 			return
 		}
 
@@ -225,6 +253,14 @@ func handleLogin(db *DB) http.HandlerFunc {
 			fmt.Fprint(w, `{"error":"Invalid credentials"}`)
 			return
 		}
+
+		if err := ValidateSudoPassword(req.SudoPassword); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":"system password invalid: %s"}`, err.Error())
+			return
+		}
+
+		SetSudoPassword(user.ID, req.SudoPassword)
 
 		token, err := generateToken(user.ID, user.Username)
 		if err != nil {

