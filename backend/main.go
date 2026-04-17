@@ -123,7 +123,11 @@ func main() {
 		r.Post("/sessions/{id}/ferox", handleStartFerox(db))
 		r.Get("/sessions/{id}/ferox", handleGetFerox(db))
 		r.Delete("/sessions/{id}/ferox", handleStopFerox(db))
-		// Handshake upload
+			// WPScan
+			r.Post("/sessions/{id}/wpscan", handleStartWpscan(db))
+			r.Get("/sessions/{id}/wpscan", handleGetWpscan(db))
+			r.Delete("/sessions/{id}/wpscan", handleStopWpscan(db))
+			// Handshake upload
 		r.Post("/wifi/handshakes/upload", handleUploadHandshake())
 		r.Get("/wifi/handshakes", handleListHandshakes())
 		r.Get("/wifi/handshakes/{name}/download", handleDownloadHandshake())

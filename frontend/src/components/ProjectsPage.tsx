@@ -8,6 +8,7 @@ import {
   BruteforcePanel,
   SqlmapPanel,
   FeroxPanel,
+  WpscanPanel,
 } from './SessionDetail';
 import HandshakeCapturePanel from './HandshakeCapturePanel';
 
@@ -236,6 +237,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
               { id: 12, label: "Bruteforce" },
               { id: 13, label: "SqlMap" },
               { id: 14, label: "FeroxBuster" },
+              { id: 15, label: "WPScan" },
             ].map(t => (
               <button
                 key={t.id}
@@ -253,6 +255,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
             {activeAttack === 12 && <BruteforcePanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
             {activeAttack === 13 && <SqlmapPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
             {activeAttack === 14 && <FeroxPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
+            {activeAttack === 15 && <WpscanPanel sessionId={ATTACKS_VIRTUAL_SESSION} />}
           </div>
         </div>
       </div>

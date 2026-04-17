@@ -89,6 +89,7 @@ const ACTIONS: ActionItem[] = [
   { id: 12, label: '12. Bruteforce' },
   { id: 13, label: '13. SqlMap' },
   { id: 14, label: '14. FeroxBuster' },
+  { id: 15, label: '15. WPScan' },
 ];
 
 // ── Quick command buttons ──
@@ -2468,6 +2469,292 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
   );
 }
 
+// ── WPScan Panel ──────────────────────────────────────────────────────────────
+
+interface WpscanFinding { type: string; value: string; }
+
+export function WpscanPanel({ sessionId }: { sessionId: number }) {
+  const [url, setUrl] = useState('');
+  const [enumerate, setEnumerate] = useState('u,vp,vt,tt,cb');
+  const [usernames, setUsernames] = useState('');
+  const [passwords, setPasswords] = useState('');
+  const [customPass, setCustomPass] = useState('');
+  const [passwordAttack, setPasswordAttack] = useState('');
+  const [apiToken, setApiToken] = useState('');
+  const [stealthy, setStealthy] = useState(false);
+  const [force, setForce] = useState(false);
+  const [disableTLS, setDisableTLS] = useState(false);
+  const [maxThreads, setMaxThreads] = useState(5);
+  const [throttle, setThrottle] = useState(0);
+  const [cookieString, setCookieString] = useState('');
+  const [httpAuth, setHttpAuth] = useState('');
+  const [customArgs, setCustomArgs] = useState('');
+
+  const [passLists, setPassLists] = useState<WordlistEntry[]>([]);
+
+  const [running, setRunning] = useState(false);
+  const [output, setOutput] = useState<string[]>([]);
+  const [found, setFound] = useState<WpscanFinding[]>([]);
+  const [jobDone, setJobDone] = useState(false);
+  const [jobError, setJobError] = useState('');
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    axios.get('/api/wordlists').then(res => {
+      setPassLists(res.data.passwords || []);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const sid = Number(sessionId);
+    if (!sid) return;
+    axios.get(`/api/sessions/${sid}`).then(r => {
+      const host = r.data?.target_host;
+      if (host) setUrl(`http://${host}/`);
+    }).catch(() => {});
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const groupedOptions = (list: WordlistEntry[]) => {
+    const groups: Record<string, WordlistEntry[]> = {};
+    for (const e of list) { (groups[e.group] = groups[e.group] || []).push(e); }
+    return Object.entries(groups).map(([g, items]) => (
+      <optgroup key={g} label={g}>
+        {items.map(e => <option key={e.path} value={e.path}>{e.label}</option>)}
+      </optgroup>
+    ));
+  };
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await axios.get(`/api/sessions/${sessionId}/wpscan`);
+        const { status, output: out, found: f, error: e } = r.data;
+        setOutput(out || []);
+        setFound(f || []);
+        setJobError(e || '');
+        if (status === 'done') {
+          stopPolling();
+          setRunning(false);
+          setJobDone(true);
+        }
+      } catch { stopPolling(); setRunning(false); }
+    }, 2000);
+  };
+
+  const handleStart = async () => {
+    if (!url) { setJobError('Target URL required'); return; }
+    setRunning(true); setJobDone(false); setJobError(''); setOutput([]); setFound([]);
+    const passFile = customPass || passwords;
+    try {
+      await axios.post(`/api/sessions/${sessionId}/wpscan`, {
+        url, enumerate, usernames,
+        passwords: passFile,
+        password_attack: passwordAttack,
+        api_token: apiToken,
+        stealthy, force,
+        disable_tls_checks: disableTLS,
+        max_threads: maxThreads,
+        throttle,
+        cookie_string: cookieString,
+        http_auth: httpAuth,
+        custom_args: customArgs,
+      });
+      startPolling();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to start';
+      setJobError(msg);
+      setRunning(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try { await axios.delete(`/api/sessions/${sessionId}/wpscan`); } catch { /* ignore */ }
+    stopPolling();
+    setRunning(false);
+  };
+
+  const findingBadge = (type: string) => {
+    switch (type) {
+      case 'user':          return '👤';
+      case 'password':      return '🔑';
+      case 'plugin':        return '🔌';
+      case 'theme':         return '🎨';
+      case 'vulnerability': return '⚠️';
+      default:              return '•';
+    }
+  };
+
+  const lineClass = (line: string) => {
+    if (line.includes('[+]') && (line.includes('login') || line.includes('password'))) return 'sm-line sm-line-found';
+    if (line.includes('[+]')) return 'sm-line sm-line-info';
+    if (line.includes('[!]') || line.includes('[WARNING]')) return 'sm-line sm-line-warn';
+    if (line.includes('[ERROR]')) return 'sm-line sm-line-error';
+    return 'sm-line';
+  };
+
+  return (
+    <div className="sm-panel">
+
+      {/* Target */}
+      <div className="sm-section">
+        <div className="sm-section-title">Target</div>
+        <div className="sm-row">
+          <span className="sm-label">URL</span>
+          <input className="sm-text-input" value={url} onChange={e => setUrl(e.target.value)}
+            placeholder="https://target.wordpress.com/" />
+        </div>
+      </div>
+
+      {/* Enumerate */}
+      <div className="sm-section">
+        <div className="sm-section-title">Enumerate</div>
+        <div className="sm-row">
+          <span className="sm-label">-e opts</span>
+          <input className="sm-text-input" value={enumerate} onChange={e => setEnumerate(e.target.value)}
+            placeholder="u,vp,vt,tt,cb" style={{maxWidth:220}} />
+          <span className="sm-label" style={{marginLeft:10, color:'#888', fontSize:'0.82em'}}>
+            u=users vp=vuln-plugins ap=all-plugins vt=vuln-themes cb=config-backups dbe=db-exports
+          </span>
+        </div>
+      </div>
+
+      {/* Password Attack */}
+      <div className="sm-section">
+        <div className="sm-section-title">Password Attack</div>
+        <div className="sm-row">
+          <span className="sm-label">Usernames (-U)</span>
+          <input className="sm-text-input" value={usernames} onChange={e => setUsernames(e.target.value)}
+            placeholder="admin (CSV or file path — blank = auto-enumerate)" />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Password list (-P)</span>
+          <select className="sm-select" value={passwords} onChange={e => setPasswords(e.target.value)} style={{flex:1}}>
+            <option value="">— none —</option>
+            {groupedOptions(passLists)}
+          </select>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Custom list path</span>
+          <input className="sm-text-input" value={customPass} onChange={e => setCustomPass(e.target.value)}
+            placeholder="/path/to/wordlist.txt (overrides dropdown)" />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Attack method</span>
+          <select className="sm-select" value={passwordAttack} onChange={e => setPasswordAttack(e.target.value)} style={{maxWidth:200}}>
+            <option value="">— auto —</option>
+            <option value="wp-login">wp-login</option>
+            <option value="xmlrpc">xmlrpc</option>
+            <option value="xmlrpc-multicall">xmlrpc-multicall</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Options */}
+      <div className="sm-section">
+        <div className="sm-section-title">Options</div>
+        <div className="sm-row">
+          <span className="sm-label">API Token</span>
+          <input className="sm-text-input" value={apiToken} onChange={e => setApiToken(e.target.value)}
+            placeholder="WPScan API token (optional)" style={{maxWidth:300}} />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Max threads (-t)</span>
+          <input className="sm-num-input" type="number" min={1} max={50} value={maxThreads}
+            onChange={e => setMaxThreads(Number(e.target.value))} />
+          <span className="sm-label" style={{marginLeft:16}}>Throttle (ms)</span>
+          <input className="sm-num-input" type="number" min={0} value={throttle}
+            onChange={e => setThrottle(Number(e.target.value))} title="0 = disabled; sets threads=1" />
+        </div>
+        <div className="sm-row">
+          <label className="sm-check">
+            <input type="checkbox" checked={stealthy} onChange={e => setStealthy(e.target.checked)} />
+            Stealthy (--rua + passive detection)
+          </label>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)} />
+            Force (skip WP check)
+          </label>
+          <label className="sm-check" style={{marginLeft:16}}>
+            <input type="checkbox" checked={disableTLS} onChange={e => setDisableTLS(e.target.checked)} />
+            Disable TLS checks
+          </label>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Cookie</span>
+          <input className="sm-text-input" value={cookieString} onChange={e => setCookieString(e.target.value)}
+            placeholder="name=value; name2=value2" style={{maxWidth:300}} />
+          <span className="sm-label" style={{marginLeft:12}}>HTTP Auth</span>
+          <input className="sm-text-input" value={httpAuth} onChange={e => setHttpAuth(e.target.value)}
+            placeholder="login:password" style={{maxWidth:180}} />
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Custom args</span>
+          <input className="sm-text-input" value={customArgs} onChange={e => setCustomArgs(e.target.value)}
+            placeholder="--extra-flags ..." />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="sm-row" style={{gap:12, alignItems:'center'}}>
+        {!running ? (
+          <button className="btn-run-attack" onClick={handleStart}>▶ Run WPScan</button>
+        ) : (
+          <button className="btn-stop-attack" onClick={handleStop}>■ Stop</button>
+        )}
+        {running && <span className="sm-status-running"><span className="btn-spinner" /> Running…</span>}
+        {jobDone && !running && <span className="sm-status-done">Done</span>}
+        {jobError && <span className="bf-error" style={{flex:1}}>{jobError}</span>}
+      </div>
+
+      {/* Findings */}
+      {found.length > 0 && (
+        <div className="sm-found-box">
+          <div className="sm-found-title">Findings ({found.length})</div>
+          <table className="sm-found-table">
+            <thead>
+              <tr><th>Type</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {found.map((f, i) => (
+                <tr key={i}>
+                  <td>{findingBadge(f.type)} {f.type}</td>
+                  <td>{f.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Output */}
+      {output.length > 0 && (
+        <div className="sm-output-wrap">
+          <div className="sm-output-title">Output</div>
+          <div className="sm-output" ref={outputRef}>
+            {output.map((line, i) => (
+              <div key={i} className={lineClass(line)}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const { id } = useParams<{ id: string }>();
   const sessionId = parseInt(id || '0', 10);
@@ -3045,7 +3332,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 8 || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 8 || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 || activeAction === 15 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -3811,6 +4098,22 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                     </div>
                   )}
 
+                  {/* WPScan */}
+                  {lootItems.filter(i => i.type === 'wpscan_finding').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-wpscan">WPScan Findings</div>
+                      <table className="loot-table ssp-table">
+                        <thead><tr><th>Type</th><th>Finding</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'wpscan_finding').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td className="loot-source">{f.type || '—'}</td><td className="loot-mono">{f.value || '—'}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   {/* Network */}
                   {lootItems.filter(i => i.type === 'network_hosts' || i.type === 'environment').length > 0 && (
                     <div className="loot-section">
@@ -3830,10 +4133,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   )}
 
                   {/* Other */}
-                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding'].includes(i.type)).length > 0 && (
+                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding','wpscan_finding'].includes(i.type)).length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-other">Other</div>
-                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding'].includes(i.type)).map((item, idx) => (
+                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding','wpscan_finding'].includes(i.type)).map((item, idx) => (
                         <div key={idx} className="loot-kv-block">
                           <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
                           {(item.fields||[]).map((f:any) => (
@@ -3930,6 +4233,19 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 </span>
               </div>
               <FeroxPanel sessionId={sessionId} />
+            </div>
+          )}
+
+          {/* ── WPScan panel ── */}
+          {activeAction === 15 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  WPScan
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <WpscanPanel sessionId={sessionId} />
             </div>
           )}
 
