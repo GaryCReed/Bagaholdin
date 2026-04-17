@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Console from './Console';
 import './SessionDetail.css';
@@ -2127,6 +2127,7 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
   const [targetIP,      setTargetIP]      = useState('');
   const [service,       setService]       = useState('ssh');
   const [mode,          setMode]          = useState<'wordlist'|'combo'|'single'>('wordlist');
+  const [singlePassMode, setSinglePassMode] = useState<'password'|'list'>('password');
   const [userFile,      setUserFile]      = useState('');
   const [passFile,      setPassFile]      = useState('');
   const [comboFile,     setComboFile]     = useState('');
@@ -2356,14 +2357,32 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
         )}
 
         {mode === 'single' && (
-          <div className="bf-cred-grid">
-            <div className="bf-cred-col">
-              <label className="bf-label">Username</label>
-              <input className="bf-text-input" value={login} onChange={e => setLogin(e.target.value)} placeholder="admin" />
-            </div>
-            <div className="bf-cred-col">
-              <label className="bf-label">Password</label>
-              <input className="bf-text-input" value={password} onChange={e => setPassword(e.target.value)} placeholder="password123" />
+          <div className="bf-section-inner">
+            <div className="bf-cred-grid">
+              <div className="bf-cred-col">
+                <label className="bf-label">Username</label>
+                <input className="bf-text-input" value={login} onChange={e => setLogin(e.target.value)} placeholder="admin" />
+              </div>
+              <div className="bf-cred-col">
+                <div className="bf-label-row">
+                  <label className="bf-label">Password</label>
+                  <div className="bf-mode-toggle">
+                    <button className={`bf-mode-btn${singlePassMode === 'password' ? ' active' : ''}`} onClick={() => setSinglePassMode('password')}>Single</button>
+                    <button className={`bf-mode-btn${singlePassMode === 'list' ? ' active' : ''}`} onClick={() => setSinglePassMode('list')}>List</button>
+                  </div>
+                </div>
+                {singlePassMode === 'password' ? (
+                  <input className="bf-text-input" value={password} onChange={e => setPassword(e.target.value)} placeholder="password123" />
+                ) : (
+                  <>
+                    <select className="bf-select" value={passFile} onChange={e => { setPassFile(e.target.value); setCustomPass(''); }}>
+                      {groupedOptions(passLists)}
+                    </select>
+                    <input className="bf-text-input" placeholder="or custom path…" value={customPass}
+                      onChange={e => { setCustomPass(e.target.value); setPassFile(''); }} style={{ marginTop: 4 }} />
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2452,13 +2471,15 @@ export function BruteforcePanel({ sessionId }: { sessionId: number }) {
 export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const { id } = useParams<{ id: string }>();
   const sessionId = parseInt(id || '0', 10);
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
 
   const [session, setSession]           = useState<Session | null>(null);
-  const [activeAction, setActiveAction] = useState<number | null>(null);
+  const [activeAction, setActiveAction] = useState<number | null>(initialTab === 'loot' ? 8 : null);
   const [localIfaces, setLocalIfaces]   = useState<{ name: string; cidr: string; ip: string }[]>([]);
 
-  // Panel collapse state — both default to expanded.
-  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  // Panel collapse state — console starts collapsed when arriving via ?tab=loot.
+  const [consoleCollapsed, setConsoleCollapsed] = useState(initialTab === 'loot');
   const [actionCollapsed, setActionCollapsed]   = useState(false);
 
   // Vuln scan state
@@ -3024,7 +3045,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 ? ' sd-panel-collapsed' : ''}`}>
+          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 8 || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -3607,7 +3628,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
           {/* ── Loot panel ── */}
           {activeAction === 8 && (
-            <div className="action-panel">
+            <div className="action-panel action-panel-loot">
               <div className="action-panel-header">
                 <span className="action-panel-title">
                   Loot
@@ -3774,6 +3795,22 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                     </div>
                   )}
 
+                  {/* SqlMap Findings */}
+                  {lootItems.filter(i => i.type === 'sqlmap_finding').length > 0 && (
+                    <div className="loot-section">
+                      <div className="loot-section-title loot-sqlmap">SQLMap Findings</div>
+                      <table className="loot-table ssp-table">
+                        <thead><tr><th>Type</th><th>Finding</th><th>Time</th></tr></thead>
+                        <tbody>
+                          {lootItems.filter(i => i.type === 'sqlmap_finding').map((item, idx) => {
+                            const f: Record<string,string> = Object.fromEntries((item.fields||[]).map((f:any)=>[f.name,f.value]));
+                            return <tr key={idx}><td className="loot-source">{f.type || '—'}</td><td className="loot-mono">{f.value || '—'}</td><td className="loot-ts">{item.timestamp?.slice(0,19).replace('T',' ')}</td></tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   {/* Network */}
                   {lootItems.filter(i => i.type === 'network_hosts' || i.type === 'environment').length > 0 && (
                     <div className="loot-section">
@@ -3793,10 +3830,10 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                   )}
 
                   {/* Other */}
-                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake'].includes(i.type)).length > 0 && (
+                  {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding'].includes(i.type)).length > 0 && (
                     <div className="loot-section">
                       <div className="loot-section-title loot-other">Other</div>
-                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake'].includes(i.type)).map((item, idx) => (
+                      {lootItems.filter(i => !['bruteforce_credential','session_credential','credential','system_info','current_user','user_account','privileges','privilege_escalation','is_admin','groups','network_hosts','environment','wifi_handshake','sqlmap_finding'].includes(i.type)).map((item, idx) => (
                         <div key={idx} className="loot-kv-block">
                           <div className="loot-kv-source">{item.source} <span className="loot-type-pill">{item.type}</span></div>
                           {(item.fields||[]).map((f:any) => (

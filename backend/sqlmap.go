@@ -333,7 +333,7 @@ func parseSqlmapLine(line string) *SqlmapFinding {
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-func runSqlmap(job *SqlmapJob, args []string) {
+func runSqlmap(job *SqlmapJob, args []string, sessionID int, target string) {
 	cmd := exec.Command("sqlmap", args...)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -354,12 +354,18 @@ func runSqlmap(job *SqlmapJob, args []string) {
 	readStream := func(sc *bufio.Scanner) {
 		for sc.Scan() {
 			line := sc.Text()
+			var newFinding *SqlmapFinding
 			job.mu.Lock()
 			job.output = append(job.output, line)
 			if f := parseSqlmapLine(line); f != nil {
 				job.found = append(job.found, *f)
+				cp := *f
+				newFinding = &cp
 			}
 			job.mu.Unlock()
+			if newFinding != nil {
+				AppendSqlmapFinding(sessionID, target, newFinding.Type, newFinding.Value)
+			}
 		}
 	}
 	go readStream(bufio.NewScanner(stdout))
@@ -420,7 +426,11 @@ func handleStartSqlmap(db *DB) http.HandlerFunc {
 
 		job := &SqlmapJob{}
 		sqlmapJobs.Store(sessionID, job)
-		go runSqlmap(job, args)
+		target := req.URL
+		if target == "" {
+			target = req.DirectConn
+		}
+		go runSqlmap(job, args, sessionID, target)
 
 		fmt.Fprint(w, `{"status":"started"}`)
 	}

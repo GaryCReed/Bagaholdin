@@ -289,6 +289,11 @@
   overflow: hidden;
 }
 
+.action-panel-loot {
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+}
+
 .action-panel-header {
   display: flex;
   align-items: center;
@@ -1373,8 +1378,9 @@
 .loot-user  { background: #1a2a1a; color: #70c070; border-bottom: 1px solid #2a4a2a; }
 .loot-priv  { background: #2a2a1a; color: #d0b060; border-bottom: 1px solid #4a4a2a; }
 .loot-net   { background: #1a2a2a; color: #60c0c0; border-bottom: 1px solid #2a4a4a; }
-.loot-wifi  { background: #1a1e2a; color: #4ec9b0; border-bottom: 1px solid #2a4040; }
-.loot-other { background: #1e1e2e; color: #a0a0c0; border-bottom: 1px solid #2a2a4a; }
+.loot-wifi   { background: #1a1e2a; color: #4ec9b0; border-bottom: 1px solid #2a4040; }
+.loot-sqlmap { background: #1e2a1a; color: #98c379; border-bottom: 1px solid #2a4a2a; }
+.loot-other  { background: #1e1e2e; color: #a0a0c0; border-bottom: 1px solid #2a2a4a; }
 
 .loot-path  { font-size: 10px; color: #858585 !important; word-break: break-all; max-width: 260px; }
 
@@ -1693,6 +1699,43 @@
   font-size: 11px;
   color: #8898aa;
   font-weight: 500;
+}
+
+.bf-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bf-mode-toggle {
+  display: flex;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bf-mode-btn {
+  background: none;
+  border: none;
+  color: #858585;
+  font-size: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.bf-mode-btn.active {
+  background-color: #0e639c;
+  color: #fff;
+}
+
+.bf-mode-btn:hover:not(.active) {
+  background-color: #2a2d2e;
+  color: #d4d4d4;
+}
+
+.bf-section-inner {
+  padding: 0;
 }
 
 /* Web form grid */

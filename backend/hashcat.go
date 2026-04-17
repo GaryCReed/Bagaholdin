@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -239,7 +240,7 @@ func buildHashcatArgs(req HashcatRequest, outFile string) ([]string, error) {
 	}
 
 	// Status updates every 10 seconds + outfile
-	// Format 3 = hash:plain so we can extract BSSID/ESSID from WPA hashes
+	// Format 3 = hash:plain; parser also handles bare hex plain (WPA mode behaviour)
 	args = append(args,
 		"--status", "--status-timer=10",
 		"--outfile", outFile,
@@ -254,6 +255,33 @@ func buildHashcatArgs(req HashcatRequest, outFile string) ([]string, error) {
 }
 
 // ── Output parsing ────────────────────────────────────────────────────────────
+
+// extractWPANetworkInfo reads a .22000 hash file and returns the BSSID and ESSID
+// from the first valid WPA* line. Used when the outfile only contains the bare plain.
+func extractWPANetworkInfo(hashFile string) (bssid, essid string) {
+	data, err := os.ReadFile(hashFile)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "WPA*") {
+			continue
+		}
+		// Strip trailing :password if present (raw hash file won't have it, but be safe)
+		hashPart := line
+		if idx := strings.LastIndex(line, ":"); idx > 0 {
+			hashPart = line[:idx]
+		}
+		fields := strings.Split(hashPart, "*")
+		if len(fields) >= 6 {
+			bssid = hexToMAC(strings.ToLower(fields[3]))
+			essid = hexToASCII(fields[5])
+			return
+		}
+	}
+	return
+}
 
 // CrackedEntry holds a single cracked result from the hashcat outfile.
 type CrackedEntry struct {
@@ -272,21 +300,38 @@ func hexToMAC(h string) string {
 	return h[0:2] + ":" + h[2:4] + ":" + h[4:6] + ":" + h[6:8] + ":" + h[8:10] + ":" + h[10:12]
 }
 
-// hexToASCII decodes a hex string to ASCII, falling back to the raw hex if invalid.
+// hexToASCII decodes a hex string to a UTF-8 string, stopping at the first null
+// byte (ESSID fields in .22000 are null-padded to 32 bytes). Falls back to the
+// raw hex string if decoding fails entirely.
 func hexToASCII(h string) string {
-	if len(h)%2 != 0 {
+	b, err := hex.DecodeString(h)
+	if err != nil {
 		return h
 	}
-	var b []byte
-	for i := 0; i < len(h); i += 2 {
-		var v byte
-		_, err := fmt.Sscanf(h[i:i+2], "%02x", &v)
-		if err != nil || v == 0 {
-			return h // not valid ASCII
-		}
-		b = append(b, v)
+	// Trim null padding
+	if i := strings.IndexByte(string(b), 0); i >= 0 {
+		b = b[:i]
+	}
+	if len(b) == 0 {
+		return h
 	}
 	return string(b)
+}
+
+// hexPlainDecode decodes a hashcat plain-text field. With --hex-plain the field
+// is always a raw hex string. It also handles the legacy $HEX[...] wrapper.
+func hexPlainDecode(s string) string {
+	// $HEX[...] wrapper (older hashcat behaviour)
+	if strings.HasPrefix(s, "$HEX[") && strings.HasSuffix(s, "]") {
+		if b, err := hex.DecodeString(s[5 : len(s)-1]); err == nil {
+			return string(b)
+		}
+	}
+	// Raw hex string (--hex-plain output)
+	if b, err := hex.DecodeString(s); err == nil && len(b) > 0 {
+		return string(b)
+	}
+	return s
 }
 
 // parseOutfileLine parses a single line from hashcat outfile format 3 (hash:plain).
@@ -298,13 +343,18 @@ func parseOutfileLine(line string) CrackedEntry {
 	}
 
 	// Find the last colon to split hash from password.
-	// WPA lines look like WPA*02*...*aabbccddeeff*...:password
+	// WPA lines look like WPA*02*...*aabbccddeeff*...:hex_password (--hex-plain)
+	// Some hashcat versions write only the hex plain with no hash prefix.
 	lastColon := strings.LastIndex(line, ":")
+	var hashPart, password string
 	if lastColon < 0 {
-		return CrackedEntry{Raw: line, Display: line, Password: line}
+		// Bare hex plain — the entire line is the hex-encoded password
+		hashPart = ""
+		password = hexPlainDecode(line)
+	} else {
+		hashPart = line[:lastColon]
+		password = hexPlainDecode(line[lastColon+1:])
 	}
-	hashPart := line[:lastColon]
-	password := line[lastColon+1:]
 
 	entry := CrackedEntry{
 		Raw:      line,
@@ -421,11 +471,13 @@ func handleStartHashcat(db *DB) http.HandlerFunc {
 			fmt.Fprint(w, `{"error":"invalid session id"}`)
 			return
 		}
-		if _, err := validateToken(extractToken(r)); err != nil {
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":"Invalid token"}`)
 			return
 		}
+		userID := claims.UserID
 		// Reject if already running
 		if j := getHashcatJob(sessionID); j != nil {
 			j.mu.Lock()
@@ -489,12 +541,25 @@ func handleStartHashcat(db *DB) http.HandlerFunc {
 
 			cmd.Wait()
 
-			// Read cracked passwords from outfile and save to loot
+			// Read cracked passwords from outfile and save to loot.
+			// When the outfile only contains a bare plain (no WPA* prefix),
+			// fall back to extracting BSSID/ESSID from the original hash file.
 			cracked := parseHashcatCracked(outFile)
+			fallbackBSSID, fallbackESSID := extractWPANetworkInfo(req.HashFile)
 			for _, entry := range cracked {
-				if entry.BSSID != "" && entry.Password != "" {
-					AppendBruteforceCredential(sessionID, entry.BSSID, entry.ESSID, entry.Password, "WPA")
+				if entry.Password == "" {
+					continue
 				}
+				bssid := entry.BSSID
+				essid := entry.ESSID
+				if bssid == "" {
+					bssid = fallbackBSSID
+				}
+				if essid == "" {
+					essid = fallbackESSID
+				}
+				AppendBruteforceCredential(sessionID, bssid, essid, entry.Password, "WPA")
+				upsertWifiCrackedProject(db, userID, sessionID, essid, bssid, entry.Password)
 			}
 			job.mu.Lock()
 			job.cracked = cracked

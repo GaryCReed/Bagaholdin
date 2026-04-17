@@ -173,6 +173,42 @@ func AppendWifiHandshakeLoot(sessionID int, target, ssid, bssid, capFile, hashFi
 	return saveLootDocument(doc)
 }
 
+// AppendSqlmapFinding saves a single sqlmap finding to the session's loot.
+// Duplicate findings (same type+value) are silently skipped.
+func AppendSqlmapFinding(sessionID int, target, findingType, value string) error {
+	lootMu.Lock()
+	defer lootMu.Unlock()
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	for _, item := range doc.Items {
+		if item.Type != "sqlmap_finding" {
+			continue
+		}
+		var tMatch, vMatch bool
+		for _, f := range item.Fields {
+			if f.Name == "type" && f.Value == findingType {
+				tMatch = true
+			}
+			if f.Name == "value" && f.Value == value {
+				vMatch = true
+			}
+		}
+		if tMatch && vMatch {
+			return nil
+		}
+	}
+	ts := time.Now().UTC().Format(time.RFC3339)
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "sqlmap_finding",
+		Source:    "sqlmap",
+		Timestamp: ts,
+		Fields:    lootFields("type", findingType, "value", value),
+	})
+	return saveLootDocument(doc)
+}
+
 // AppendLoot parses cmd+output for useful loot and appends to the session's loot.xml.
 func AppendLoot(sessionID int, target, cmd, output string) error {
 	items := extractLoot(cmd, output)

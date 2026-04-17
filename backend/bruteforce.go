@@ -102,6 +102,8 @@ func buildHydraArgs(target string, req BruteforceRequest, outFile string) ([]str
 		}
 		if req.Password != "" {
 			args = append(args, "-p", req.Password)
+		} else if req.PassFile != "" {
+			args = append(args, "-P", req.PassFile)
 		}
 	default: // wordlist
 		if req.UserFile != "" {
@@ -210,7 +212,72 @@ func parseHydraLine(line string) *FoundCred {
 
 // ── Background runner ─────────────────────────────────────────────────────────
 
-func runHydra(sessionID int, target string, req BruteforceRequest, db *DB) {
+// upsertHostBruteforceLoot saves a cracked credential to the correct project loot.
+// If the attacking session already belongs to a project, that project is used.
+// Otherwise a project named after the target IP is found or created.
+// A "Bruteforce Credentials" session within that project is found or created,
+// and the credential is appended (deduplication handled by AppendBruteforceCredential).
+func upsertHostBruteforceLoot(db *DB, userID, attackSessionID int, target, service, username, password string) {
+	if target == "" {
+		return
+	}
+
+	// Prefer the project the attacking session already belongs to.
+	var projID int
+	if attackSessionID > 0 {
+		if sess, err := db.GetSession(attackSessionID, userID); err == nil && sess.ProjectID != nil {
+			projID = *sess.ProjectID
+		}
+	}
+
+	var proj *Project
+	if projID != 0 {
+		proj, _ = db.GetProject(projID, userID)
+	}
+
+	// Fall back: find or create a project named after the target IP.
+	if proj == nil {
+		projects, err := db.GetUserProjects(userID)
+		if err == nil {
+			for _, p := range projects {
+				if strings.EqualFold(p.Name, target) {
+					proj = p
+					break
+				}
+			}
+		}
+		if proj == nil {
+			var err error
+			proj, err = db.CreateProject(userID, target, "")
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	const sessName = "Bruteforce Credentials"
+	var sessID int
+	sessions, err := db.GetProjectSessions(proj.ID, userID)
+	if err == nil {
+		for _, s := range sessions {
+			if s.SessionName == sessName {
+				sessID = s.ID
+				break
+			}
+		}
+	}
+	if sessID == 0 {
+		sess, err := db.CreateProjectSession(userID, proj.ID, sessName, target)
+		if err != nil {
+			return
+		}
+		sessID = sess.ID
+	}
+
+	AppendBruteforceCredential(sessID, target, username, password, service)
+}
+
+func runHydra(sessionID int, target string, req BruteforceRequest, db *DB, userID int) {
 	outFile := fmt.Sprintf("/tmp/hydra-%d.txt", sessionID)
 	os.Remove(outFile)
 
@@ -256,6 +323,7 @@ func runHydra(sessionID int, target string, req BruteforceRequest, db *DB) {
 			// Save synchronously outside the job mutex so lootMu is always acquired.
 			if newCred != nil {
 				AppendBruteforceCredential(sessionID, target, newCred.Login, newCred.Password, newCred.Service)
+				upsertHostBruteforceLoot(db, userID, sessionID, target, newCred.Service, newCred.Login, newCred.Password)
 			}
 		}
 	}
@@ -468,7 +536,7 @@ func handleStartBruteforce(db *DB) http.HandlerFunc {
 		job := &BruteforceJob{}
 		bruteJobs.Store(sessionID, job)
 
-		go runHydra(sessionID, target, req, db)
+		go runHydra(sessionID, target, req, db, claims.UserID)
 
 		fmt.Fprint(w, `{"status":"started"}`)
 	}

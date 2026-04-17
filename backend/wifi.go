@@ -299,6 +299,68 @@ func createHandshakeProject(db *DB, userID int, ssid, bssid string, channel int,
 	AppendWifiHandshakeLoot(sess.ID, bssid, ssid, bssid, capFile, hashFile, hashCount)
 }
 
+// upsertWifiCrackedProject finds or creates a project for the cracked SSID,
+// finds or creates a "WiFi Cracked Credentials" session within it, then appends
+// the cracked password (deduplicated by AppendBruteforceCredential).
+// If attackSessionID belongs to an existing project that project is used directly.
+func upsertWifiCrackedProject(db *DB, userID, attackSessionID int, essid, bssid, password string) {
+	name := essid
+	if name == "" {
+		name = bssid
+	}
+
+	// Prefer the project the attacking session already belongs to
+	var proj *Project
+	if attackSessionID > 0 {
+		if sess, err := db.GetSession(attackSessionID, userID); err == nil && sess.ProjectID != nil {
+			proj, _ = db.GetProject(*sess.ProjectID, userID)
+		}
+	}
+
+	// Fall back: find or create a project named after the SSID
+	if proj == nil {
+		projects, err := db.GetUserProjects(userID)
+		if err == nil {
+			for _, p := range projects {
+				if strings.EqualFold(p.Name, name) {
+					proj = p
+					break
+				}
+			}
+		}
+		if proj == nil {
+			var err error
+			proj, err = db.CreateProject(userID, name, "")
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// Find or create "WiFi Cracked Credentials" session
+	const sessName = "WiFi Cracked Credentials"
+	var sessID int
+	sessions, err := db.GetProjectSessions(proj.ID, userID)
+	if err == nil {
+		for _, s := range sessions {
+			if s.SessionName == sessName {
+				sessID = s.ID
+				break
+			}
+		}
+	}
+	if sessID == 0 {
+		sess, err := db.CreateProjectSession(userID, proj.ID, sessName, bssid)
+		if err != nil {
+			return
+		}
+		sessID = sess.ID
+	}
+
+	// Append credential — AppendBruteforceCredential deduplicates internally
+	AppendBruteforceCredential(sessID, bssid, essid, password, "WPA")
+}
+
 // getFreshClientMACs re-parses the most recent scan CSV to get an up-to-date
 // client list for the given BSSID. Returns nil if nothing found.
 func getFreshClientMACs(sessionID int, bssid string) []string {

@@ -351,9 +351,12 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
             <div className="session-cards">
               {sessions.map((s) => {
                 const ports = getSessionPorts(s.id);
+                const sessionHref = s.session_name === 'WiFi Cracked Credentials'
+                  ? `/session/${s.id}?tab=loot`
+                  : `/session/${s.id}`;
                 return (
                 <div key={s.id} className="session-card">
-                  <Link to={`/session/${s.id}`} className="session-card-body">
+                  <Link to={sessionHref} className="session-card-body">
                     <div className="session-card-name">
                       <span className={`status-dot ${s.is_running ? 'running' : 'idle'}`} />
                       {s.session_name}
@@ -374,7 +377,7 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
                     )}
                   </Link>
                   <div className="session-card-actions">
-                    <Link to={`/session/${s.id}`} className="btn-open">
+                    <Link to={sessionHref} className="btn-open">
                       Open →
                     </Link>
                     <button
