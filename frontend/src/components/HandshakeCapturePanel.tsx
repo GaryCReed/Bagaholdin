@@ -48,6 +48,8 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
   const [selectedBSSIDs, setSelectedBSSIDs] = useState<Set<string>>(new Set());
   const [deauthCount, setDeauthCount] = useState(10);
   const [deauthRepeat, setDeauthRepeat] = useState(true);
+  const [wpa3Downgrade, setWpa3Downgrade] = useState(false);
+  const [rogueIface, setRogueIface] = useState('');
   const [captureRunning, setCaptureRunning] = useState(false);
   const [captureOutput, setCaptureOutput] = useState<string[]>([]);
   const [handshakes, setHandshakes] = useState<string[]>([]);
@@ -207,6 +209,8 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
         targets,
         deauth_count: deauthCount,
         deauth_repeat: deauthRepeat,
+        wpa3_downgrade: wpa3Downgrade,
+        rogue_iface: rogueIface,
       });
       setCaptureRunning(true);
       setCaptureOutput([]);
@@ -458,6 +462,25 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
             </button>
           ) : (
             <button className="btn-stop-attack" onClick={stopCapture}>■ Stop Capture</button>
+          )}
+          <label className="hcp-check" title="Spawn a WPA2-only rogue AP (hostapd-mana) to force WPA3 transition-mode clients to downgrade. Requires a second wireless interface.">
+            <input
+              type="checkbox"
+              checked={wpa3Downgrade}
+              onChange={e => setWpa3Downgrade(e.target.checked)}
+              disabled={captureRunning}
+            />
+            WPA3-Transition Downgrade
+          </label>
+          {wpa3Downgrade && (
+            <input
+              type="text"
+              className="hcp-iface-input"
+              placeholder="Rogue AP interface (e.g. wlan1)"
+              value={rogueIface}
+              onChange={e => setRogueIface(e.target.value)}
+              disabled={captureRunning}
+            />
           )}
           {monitorIface && selectedBSSIDs.size === 0 && !captureRunning && (
             <span className="hcp-hint">Select targets from the AP table above.</span>
