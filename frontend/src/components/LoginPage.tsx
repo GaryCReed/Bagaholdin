@@ -27,6 +27,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
       await axios.post(endpoint, payload);
 
+      sessionStorage.setItem('msf_sudo', sudoPassword);
       onLogin();
     } catch (err: any) {
       setError(

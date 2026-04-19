@@ -192,8 +192,9 @@ func buildHydraArgs(target string, req BruteforceRequest, outFile string) ([]str
 
 // hydraFoundRe matches lines like:
 // [22][ssh] host: 192.168.0.1   login: admin   password: password123
+// [22][ssh] host: 192.168.0.1   misc: (null)   login: admin   password: password123
 var hydraFoundRe = regexp.MustCompile(
-	`\[(\d+)\]\[([^\]]+)\] host: (\S+)\s+login: (\S+)\s+password: (.+)`)
+	`\[(\d+)\]\[([^\]]+)\] host: (\S+).*?login: (\S+)\s+password: (.+)`)
 
 func parseHydraLine(line string) *FoundCred {
 	m := hydraFoundRe.FindStringSubmatch(line)
@@ -322,7 +323,6 @@ func runHydra(sessionID int, target string, req BruteforceRequest, db *DB, userI
 			job.mu.Unlock()
 			// Save synchronously outside the job mutex so lootMu is always acquired.
 			if newCred != nil {
-				AppendBruteforceCredential(sessionID, target, newCred.Login, newCred.Password, newCred.Service)
 				upsertHostBruteforceLoot(db, userID, sessionID, target, newCred.Service, newCred.Login, newCred.Password)
 			}
 		}

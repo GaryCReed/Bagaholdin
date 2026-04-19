@@ -2694,3 +2694,78 @@
 .ferox-line-5xx    { color: #ca5a5a; font-weight: 600; }
 .ferox-line-found  { color: #5aca8a; }
 .ferox-line-err    { color: #ca5a5a; }
+
+/* ── Msfvenom Panel ── */
+.msf-venom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.msf-venom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.msf-venom-col-full { grid-column: 1 / -1; }
+.msf-venom-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 4px;
+}
+.msf-venom-input,
+.msf-venom-select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #141422;
+  color: #d4d4d4;
+  border: 1px solid #3c3c5c;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+.msf-venom-select option,
+.msf-venom-select optgroup { background: #141422; }
+.msf-venom-btn { align-self: flex-start; }
+.msf-venom-divider {
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 0 2px;
+  border-top: 1px solid #2a2a3a;
+  margin-top: 4px;
+}
+.msf-venom-output {
+  background: #0d0d1a;
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 0.82rem;
+  color: #4ec9b0;
+}
+.msf-venom-output pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.msf-venom-error {
+  color: #f44747;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Reset WiFi Panel ── */
+.reset-wifi-panel { display: flex; flex-direction: column; gap: 14px; padding: 4px 0; }
+.reset-wifi-desc { margin: 0; font-size: 0.85rem; color: #aaa; line-height: 1.5; }
+.reset-wifi-desc code { background: #2a2a3a; padding: 1px 5px; border-radius: 3px; font-size: 0.82rem; }
+.reset-wifi-output {
+  background: #0d0d1a;
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 0.8rem;
+  color: #4ec9b0;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.reset-wifi-output pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.reset-wifi-error { color: #f44747; font-size: 0.85rem; }

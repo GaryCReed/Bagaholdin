@@ -143,6 +143,11 @@ func main() {
 		r.Post("/sessions/{id}/wifi/capture", handleStartWifiCapture(db))
 		r.Get("/sessions/{id}/wifi/capture", handleGetWifiCapture(db))
 		r.Delete("/sessions/{id}/wifi/capture", handleStopWifiCapture(db))
+		// Msfvenom payload generator
+		r.Post("/sessions/{id}/msfvenom", handleMsfvenomGenerate(db))
+		r.Post("/sessions/{id}/msfvenom/upload", handleMsfvenomUpload(db))
+		// Tools
+		r.Post("/wifi/reset", handleResetWifiAdapters())
 	})
 
 	// Serve React SPA: real files are served directly, everything else falls back to index.html

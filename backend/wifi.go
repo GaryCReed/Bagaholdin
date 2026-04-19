@@ -1043,3 +1043,76 @@ func handleStopWifiCapture(db *DB) http.HandlerFunc {
 		fmt.Fprint(w, `{"status":"stopped"}`)
 	}
 }
+
+// handleResetWifiAdapters kills interfering processes, stops any monitor-mode
+// interfaces via airmon-ng, then restores every adapter to managed mode and
+// re-enables NetworkManager control.
+func handleResetWifiAdapters() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+
+		var log []string
+		run := func(name string, args ...string) {
+			out, err := sudoRun(claims.UserID, name, args...)
+			line := strings.TrimSpace(string(out))
+			status := "ok"
+			if err != nil {
+				status = err.Error()
+			}
+			entry := fmt.Sprintf("[%s %s] %s", name, strings.Join(args, " "), status)
+			if line != "" {
+				entry += ": " + line
+			}
+			log = append(log, entry)
+		}
+
+		// 1. Kill processes that hold adapters in monitor mode.
+		run("airmon-ng", "check", "kill")
+
+		// 2. Find all WiFi interfaces and their current types via `iw dev`.
+		iwOut, _ := exec.Command("iw", "dev").Output()
+		type iwIface struct{ name, kind string }
+		var ifaces []iwIface
+		var cur string
+		for _, l := range strings.Split(string(iwOut), "\n") {
+			t := strings.TrimSpace(l)
+			if strings.HasPrefix(t, "Interface ") {
+				cur = strings.TrimPrefix(t, "Interface ")
+			} else if strings.HasPrefix(t, "type ") && cur != "" {
+				ifaces = append(ifaces, iwIface{cur, strings.TrimPrefix(t, "type ")})
+				cur = ""
+			}
+		}
+
+		if len(ifaces) == 0 {
+			log = append(log, "[iw dev] no wireless interfaces found")
+		}
+
+		// 3. For each interface: stop monitor mode (airmon-ng), set to managed, re-enable NM.
+		for _, iface := range ifaces {
+			log = append(log, fmt.Sprintf("[%s] type=%s — resetting", iface.name, iface.kind))
+
+			if iface.kind == "monitor" {
+				run("airmon-ng", "stop", iface.name)
+			}
+
+			run("ip", "link", "set", iface.name, "down")
+			run("iw", iface.name, "set", "type", "managed")
+			run("ip", "link", "set", iface.name, "up")
+			run("nmcli", "device", "set", iface.name, "managed", "yes")
+		}
+
+		// 4. Restart NetworkManager so it picks up all interfaces cleanly.
+		run("systemctl", "restart", "NetworkManager.service")
+
+		output := strings.Join(log, "\n")
+		outData, _ := encodeJSON(output)
+		fmt.Fprintf(w, `{"status":"ok","output":%s}`, outData)
+	}
+}

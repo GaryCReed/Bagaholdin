@@ -36,6 +36,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
   const [localInterfaces, setLocalInterfaces] = useState<{ name: string; cidr: string; ip: string }[]>([]);
   const [activeAttack, setActiveAttack] = useState<number>(9);
 
+
   // Editing state — id of project being edited, or null
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
@@ -259,6 +260,7 @@ export default function ProjectsPage({ onLogout }: ProjectsPageProps) {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

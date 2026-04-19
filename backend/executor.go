@@ -17,8 +17,9 @@ import (
 // again: new pipes and goroutines are wired up to the SAME channels so every
 // WebSocket subscriber and the broadcaster stay connected transparently.
 type SessionExecutor struct {
-	SessionID  int
-	TargetHost string
+	SessionID    int
+	TargetHost   string
+	sudoPassword string // empty means launch without sudo
 
 	// Process state — replaced on each restart; guarded by mutex.
 	cmd    *exec.Cmd
@@ -57,10 +58,11 @@ var (
 )
 
 // StartSession allocates a new executor and starts msfconsole for the first time.
-func StartSession(sessionID int, targetHost string) (*SessionExecutor, error) {
+func StartSession(sessionID int, targetHost string, sudoPassword string) (*SessionExecutor, error) {
 	executor := &SessionExecutor{
-		SessionID:  sessionID,
-		TargetHost: targetHost,
+		SessionID:    sessionID,
+		TargetHost:   targetHost,
+		sudoPassword: sudoPassword,
 		outputChan: make(chan string, 200),
 		done:       make(chan bool, 1),
 		readyChan:  make(chan struct{}),
@@ -97,9 +99,14 @@ func (e *SessionExecutor) spawnProcess(initial bool) error {
 		msfPath = "msfconsole"
 	}
 
-	fmt.Printf("[Executor] Session %d: launching msfconsole (%s)\n", e.SessionID, msfPath)
-
-	cmd := exec.Command(msfPath, "-q")
+	var cmd *exec.Cmd
+	if e.sudoPassword != "" {
+		fmt.Printf("[Executor] Session %d: launching msfconsole as root (%s)\n", e.SessionID, msfPath)
+		cmd = exec.Command("sudo", "-S", msfPath, "-q")
+	} else {
+		fmt.Printf("[Executor] Session %d: launching msfconsole (%s)\n", e.SessionID, msfPath)
+		cmd = exec.Command(msfPath, "-q")
+	}
 	cmd.Env = msfEnv()
 
 	stdin, err := cmd.StdinPipe()
@@ -117,6 +124,12 @@ func (e *SessionExecutor) spawnProcess(initial bool) error {
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start: %w", err)
+	}
+
+	// Feed the sudo password as the very first stdin line so sudo -S can consume it.
+	// After sudo validates, remaining stdin reads go directly to msfconsole.
+	if e.sudoPassword != "" {
+		io.WriteString(stdin, e.sudoPassword+"\n")
 	}
 
 	fmt.Printf("[Executor] Session %d: msfconsole PID %d\n", e.SessionID, cmd.Process.Pid)

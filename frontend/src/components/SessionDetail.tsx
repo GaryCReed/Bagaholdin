@@ -83,13 +83,16 @@ const ACTIONS: ActionItem[] = [
   { id: 7, label: '7. Reporting' },
   { id: 8, label: '8. Loot' },
   { id: 9, label: '9. Notes' },
+  { id: 10, label: '10. Msfvenom Payload' },
   { type: 'divider', label: 'Password Attacks' },
-  { id: 10, label: "10. Wifi Handshake's" },
-  { id: 11, label: '11. Hashcat' },
-  { id: 12, label: '12. Bruteforce' },
-  { id: 13, label: '13. SqlMap' },
-  { id: 14, label: '14. FeroxBuster' },
-  { id: 15, label: '15. WPScan' },
+  { id: 11, label: "11. Wifi Handshake's" },
+  { id: 12, label: '12. Hashcat' },
+  { id: 13, label: '13. Bruteforce' },
+  { id: 14, label: '14. SqlMap' },
+  { id: 15, label: '15. FeroxBuster' },
+  { id: 16, label: '16. WPScan' },
+  { type: 'divider', label: 'Tools' },
+  { id: 17, label: '17. Reset WiFi Adapters' },
 ];
 
 // ── Quick command buttons ──
@@ -731,6 +734,255 @@ interface UploadedCap {
   networks: number;
   uploaded_at: string;
   error?: string;
+}
+
+// ── Reset WiFi Adapters Panel ─────────────────────────────────────────────────
+
+export function ResetWifiPanel() {
+  const [loading, setLoading] = useState(false);
+  const [output,  setOutput]  = useState('');
+  const [error,   setError]   = useState('');
+
+  const handleReset = async () => {
+    setLoading(true); setOutput(''); setError('');
+    try {
+      const res = await axios.post('/api/wifi/reset');
+      setOutput(res.data.output || 'Done.');
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="reset-wifi-panel">
+      <p className="reset-wifi-desc">
+        Kills interfering processes, stops all monitor-mode interfaces via <code>airmon-ng stop</code>,
+        restores every adapter to managed mode, and restarts NetworkManager.
+      </p>
+      <button className="btn-primary" onClick={handleReset} disabled={loading}>
+        {loading ? <><span className="btn-spinner" /> Resetting…</> : '↺ Reset All WiFi Adapters'}
+      </button>
+      {error  && <div className="reset-wifi-error">{error}</div>}
+      {output && <div className="reset-wifi-output"><pre>{output}</pre></div>}
+    </div>
+  );
+}
+
+// ── Msfvenom Payload Panel ────────────────────────────────────────────────────
+
+const MSFVENOM_PAYLOADS = [
+  { group: 'Windows x64', payloads: [
+    'windows/x64/meterpreter/reverse_tcp',
+    'windows/x64/meterpreter/reverse_https',
+    'windows/x64/meterpreter_reverse_tcp',
+    'windows/x64/shell/reverse_tcp',
+    'windows/x64/shell_reverse_tcp',
+    'windows/x64/meterpreter/bind_tcp',
+  ]},
+  { group: 'Windows x86', payloads: [
+    'windows/meterpreter/reverse_tcp',
+    'windows/meterpreter/reverse_https',
+    'windows/shell/reverse_tcp',
+    'windows/meterpreter/bind_tcp',
+  ]},
+  { group: 'Linux x64', payloads: [
+    'linux/x64/meterpreter/reverse_tcp',
+    'linux/x64/meterpreter_reverse_tcp',
+    'linux/x64/shell/reverse_tcp',
+    'linux/x64/shell_reverse_tcp',
+    'linux/x64/meterpreter/bind_tcp',
+  ]},
+  { group: 'Linux x86', payloads: [
+    'linux/x86/meterpreter/reverse_tcp',
+    'linux/x86/shell/reverse_tcp',
+  ]},
+  { group: 'Web / Script', payloads: [
+    'php/meterpreter/reverse_tcp',
+    'java/meterpreter/reverse_tcp',
+    'python/meterpreter/reverse_tcp',
+    'android/meterpreter/reverse_tcp',
+  ]},
+  { group: 'macOS', payloads: [
+    'osx/x64/shell_reverse_tcp',
+    'osx/x64/meterpreter_reverse_tcp',
+  ]},
+];
+
+const FORMAT_DEFAULTS: Record<string, string> = {
+  'windows/': 'exe',
+  'linux/':   'elf',
+  'php/':     'raw',
+  'python/':  'py',
+  'android/': 'apk',
+  'java/':    'jar',
+  'osx/':     'macho',
+};
+
+const REMOTE_DEFAULTS: Record<string, string> = {
+  exe:   'C:\\Windows\\Temp\\payload.exe',
+  dll:   'C:\\Windows\\Temp\\payload.dll',
+  ps1:   'C:\\Windows\\Temp\\payload.ps1',
+  elf:   '/tmp/payload',
+  sh:    '/tmp/payload.sh',
+  py:    '/tmp/payload.py',
+  apk:   '/tmp/payload.apk',
+  macho: '/tmp/payload',
+};
+
+export function MsfvenomPanel({ sessionId }: { sessionId: number }) {
+  const [payload,      setPayload]      = useState('windows/x64/meterpreter/reverse_tcp');
+  const [lhost,        setLhost]        = useState('');
+  const [lport,        setLport]        = useState('4444');
+  const [format,       setFormat]       = useState('exe');
+  const [arch,         setArch]         = useState('');
+  const [encoder,      setEncoder]      = useState('');
+  const [badChars,     setBadChars]     = useState('');
+  const [iterations,   setIterations]   = useState('1');
+  const [msfSessId,    setMsfSessId]    = useState('1');
+  const [remotePath,   setRemotePath]   = useState('C:\\Windows\\Temp\\payload.exe');
+  const [genLoading,   setGenLoading]   = useState(false);
+  const [upLoading,    setUpLoading]    = useState(false);
+  const [output,       setOutput]       = useState('');
+  const [error,        setError]        = useState('');
+
+  useEffect(() => {
+    axios.get('/api/network')
+      .then(res => { const ifaces = res.data.interfaces || []; if (ifaces.length > 0) setLhost(ifaces[0].ip); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const prefix = Object.keys(FORMAT_DEFAULTS).find(k => payload.startsWith(k));
+    if (prefix) setFormat(FORMAT_DEFAULTS[prefix]);
+  }, [payload]);
+
+  useEffect(() => {
+    setRemotePath(REMOTE_DEFAULTS[format] || '/tmp/payload');
+  }, [format]);
+
+  const handleGenerate = async () => {
+    setGenLoading(true); setOutput(''); setError('');
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/msfvenom`, {
+        payload, lhost, lport: parseInt(lport) || 4444, format,
+        arch: arch || undefined, encoder: encoder || undefined,
+        bad_chars: badChars || undefined, iterations: parseInt(iterations) || 1,
+      }, { responseType: 'blob' });
+      const extMap: Record<string,string> = { exe:'.exe', elf:'.elf', dll:'.dll', php:'.php', py:'.py', sh:'.sh', ps1:'.ps1', apk:'.apk', jar:'.jar', macho:'', raw:'.bin' };
+      const ext = extMap[format] ?? '.bin';
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a'); a.href = blobUrl; a.download = `payload${ext}`; a.click();
+      window.URL.revokeObjectURL(blobUrl);
+      setOutput('Payload generated and downloaded successfully.');
+    } catch (err: any) {
+      try { const t = await (err.response?.data as Blob)?.text(); setError(t || err.message); }
+      catch { setError(err.message); }
+    } finally { setGenLoading(false); }
+  };
+
+  const handleUpload = async () => {
+    setUpLoading(true); setOutput(''); setError('');
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/msfvenom/upload`, {
+        payload, lhost, lport: parseInt(lport) || 4444, format,
+        arch: arch || undefined, encoder: encoder || undefined,
+        bad_chars: badChars || undefined, iterations: parseInt(iterations) || 1,
+        msf_session_id: msfSessId, remote_path: remotePath,
+      });
+      setOutput(res.data.output || `Uploaded to ${res.data.remote_path}`);
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message);
+    } finally { setUpLoading(false); }
+  };
+
+  return (
+    <div className="msf-venom-panel">
+      <div className="msf-venom-grid">
+        <div className="msf-venom-col-full">
+          <label className="msf-venom-label">Payload</label>
+          <select className="msf-venom-select" value={payload} onChange={e => setPayload(e.target.value)}>
+            {MSFVENOM_PAYLOADS.map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.payloads.map(p => <option key={p} value={p}>{p}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="msf-venom-label">LHOST (attacker IP)</label>
+          <input className="msf-venom-input" value={lhost} onChange={e => setLhost(e.target.value)} placeholder="192.168.1.1" />
+        </div>
+        <div>
+          <label className="msf-venom-label">LPORT</label>
+          <input className="msf-venom-input" value={lport} onChange={e => setLport(e.target.value)} placeholder="4444" />
+        </div>
+
+        <div>
+          <label className="msf-venom-label">Format</label>
+          <select className="msf-venom-select" value={format} onChange={e => setFormat(e.target.value)}>
+            {['exe','dll','elf','macho','apk','jar','asp','aspx','jsp','war','php','py','rb','sh','ps1','raw','hex','base64'].map(f =>
+              <option key={f} value={f}>{f}</option>
+            )}
+          </select>
+        </div>
+        <div>
+          <label className="msf-venom-label">Arch (optional)</label>
+          <select className="msf-venom-select" value={arch} onChange={e => setArch(e.target.value)}>
+            <option value="">auto</option>
+            <option>x64</option><option>x86</option><option>aarch64</option><option>armle</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="msf-venom-label">Encoder (optional)</label>
+          <select className="msf-venom-select" value={encoder} onChange={e => setEncoder(e.target.value)}>
+            <option value="">none</option>
+            <option value="x86/shikata_ga_nai">x86/shikata_ga_nai</option>
+            <option value="x64/xor">x64/xor</option>
+            <option value="x64/xor_dynamic">x64/xor_dynamic</option>
+            <option value="x86/alpha_mixed">x86/alpha_mixed</option>
+            <option value="x86/countdown">x86/countdown</option>
+          </select>
+        </div>
+        <div>
+          <label className="msf-venom-label">Iterations</label>
+          <input className="msf-venom-input" value={iterations} onChange={e => setIterations(e.target.value)} placeholder="1" />
+        </div>
+
+        <div className="msf-venom-col-full">
+          <label className="msf-venom-label">Bad Chars (optional, e.g. \x00\xff)</label>
+          <input className="msf-venom-input" value={badChars} onChange={e => setBadChars(e.target.value)} placeholder="\x00" />
+        </div>
+      </div>
+
+      <button className="btn-primary msf-venom-btn" onClick={handleGenerate} disabled={genLoading || !lhost || !lport}>
+        {genLoading ? <><span className="btn-spinner" /> Generating…</> : '⬇ Generate & Download'}
+      </button>
+
+      <div className="msf-venom-divider">Upload to Host via Active MSF Session</div>
+
+      <div className="msf-venom-grid">
+        <div>
+          <label className="msf-venom-label">MSF Session #</label>
+          <input className="msf-venom-input" value={msfSessId} onChange={e => setMsfSessId(e.target.value)} placeholder="1" />
+        </div>
+        <div>
+          <label className="msf-venom-label">Remote Path</label>
+          <input className="msf-venom-input" value={remotePath} onChange={e => setRemotePath(e.target.value)} placeholder="/tmp/payload" />
+        </div>
+      </div>
+
+      <button className="btn-secondary msf-venom-btn" onClick={handleUpload} disabled={upLoading || !lhost || !lport || !msfSessId}>
+        {upLoading ? <><span className="btn-spinner" /> Uploading…</> : '⬆ Generate & Upload to Host'}
+      </button>
+
+      {error  && <div className="msf-venom-error">{error}</div>}
+      {output && <div className="msf-venom-output"><pre>{output}</pre></div>}
+    </div>
+  );
 }
 
 export function HandshakeUploadPanel() {
@@ -2975,6 +3227,9 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     axios.get('/api/network')
       .then(res => setLocalIfaces(res.data.interfaces || []))
       .catch(() => {});
+    // Auto-populate sudo password from the value stored at login
+    const storedSudo = sessionStorage.getItem('msf_sudo');
+    if (storedSudo) setAskpassStored(storedSudo);
   }, [sessionId]);
 
   // On mount: check if a scan is already running server-side and resume polling if so.
@@ -3462,7 +3717,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          {activeAction !== 8 && activeAction !== 3 && activeAction !== 10 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && (
+          {activeAction !== 8 && activeAction !== 3 && activeAction !== 10 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && activeAction !== 16 && activeAction !== 17 && (
           <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
@@ -4306,8 +4561,31 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             </div>
           )}
 
-          {/* ── Hashcat panel ── */}
+          {/* ── Msfvenom panel ── */}
+          {activeAction === 10 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">
+                  Msfvenom Payload
+                  {session && <span className="action-panel-target"> — {session.target_host}</span>}
+                </span>
+              </div>
+              <MsfvenomPanel sessionId={sessionId} />
+            </div>
+          )}
+
+          {/* ── Wifi Handshake panel ── */}
           {activeAction === 11 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">Wifi Handshakes</span>
+              </div>
+              <HandshakeUploadPanel />
+            </div>
+          )}
+
+          {/* ── Hashcat panel ── */}
+          {activeAction === 12 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4319,18 +4597,8 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             </div>
           )}
 
-          {/* ── Wifi Handshake panel ── */}
-          {activeAction === 10 && (
-            <div className="action-panel">
-              <div className="action-panel-header">
-                <span className="action-panel-title">Wifi Handshakes</span>
-              </div>
-              <HandshakeUploadPanel />
-            </div>
-          )}
-
           {/* ── Bruteforce panel ── */}
-          {activeAction === 12 && (
+          {activeAction === 13 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4343,7 +4611,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── SqlMap panel ── */}
-          {activeAction === 13 && (
+          {activeAction === 14 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4356,7 +4624,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── FeroxBuster panel ── */}
-          {activeAction === 14 && (
+          {activeAction === 15 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4369,7 +4637,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── WPScan panel ── */}
-          {activeAction === 15 && (
+          {activeAction === 16 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4378,6 +4646,16 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 </span>
               </div>
               <WpscanPanel sessionId={sessionId} />
+            </div>
+          )}
+
+          {/* ── Reset WiFi Adapters panel ── */}
+          {activeAction === 17 && (
+            <div className="action-panel">
+              <div className="action-panel-header">
+                <span className="action-panel-title">Reset WiFi Adapters</span>
+              </div>
+              <ResetWifiPanel />
             </div>
           )}
 

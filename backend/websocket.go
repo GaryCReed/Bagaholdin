@@ -129,7 +129,8 @@ func handleCommandWebSocket(w http.ResponseWriter, r *http.Request, db *DB) {
 				conn.WriteJSON(OutputMessage{Type: "error", Status: "session_not_found", Output: "Session not found"})
 				return
 			}
-			newExecutor, err := StartSession(sessionID, session.TargetHost)
+			sudoPass, _ := GetSudoPassword(claims.UserID)
+			newExecutor, err := StartSession(sessionID, session.TargetHost, sudoPass)
 			if err != nil {
 				fmt.Printf("[WS] Failed to start executor for session %d: %v\n", sessionID, err)
 				conn.WriteJSON(OutputMessage{Type: "error", Status: "executor_start_failed", Output: fmt.Sprintf("Failed to start msfconsole: %v", err)})
