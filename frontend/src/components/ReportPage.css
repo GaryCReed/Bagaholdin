@@ -1,17 +1,17 @@
-/* ── Screen: wrapper + toolbar ── */
-
+/* ── Report Page ── */
 .rp-loading {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  color: #ccc;
-  font-family: sans-serif;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 .rp-wrapper {
   min-height: 100vh;
-  background: #2d2d2d;
+  background: var(--bg-base);
 }
 
 .rp-toolbar {
@@ -19,8 +19,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 24px;
-  background: #1e1e1e;
-  border-bottom: 1px solid #3e3e42;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-base);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -33,50 +33,48 @@
 }
 
 .rp-toolbar-title {
-  font-family: sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  color: #ccc;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyan);
 }
 
 .rp-toolbar-hint {
-  font-family: sans-serif;
-  font-size: 12px;
-  color: #777;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .rp-btn-print {
-  padding: 7px 18px;
-  background: #0e639c;
-  color: #fff;
-  border: none;
-  border-radius: 3px;
-  font-size: 13px;
-  font-family: sans-serif;
-  cursor: pointer;
+  padding: 6px 16px;
+  background: var(--cyan-dim);
+  color: var(--cyan);
+  border: 1px solid var(--border-cyan);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
   font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.rp-btn-print:hover {
-  background: #1177bb;
-}
+.rp-btn-print:hover { background: rgba(0,212,255,0.2); box-shadow: var(--glow-cyan); }
 
-/* ── Report document (white card) ── */
-
+/* ── Report document (white card for print) ── */
 .rp-document {
   max-width: 900px;
   margin: 32px auto;
   background: #fff;
   color: #111;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
   padding: 60px 72px;
   font-family: 'Georgia', 'Times New Roman', serif;
   font-size: 14px;
   line-height: 1.7;
+  border-radius: var(--radius-md);
 }
 
 /* ── Cover page ── */
-
 .rp-cover {
   text-align: center;
   padding: 60px 0 80px;
@@ -134,10 +132,7 @@
 }
 
 /* ── Sections ── */
-
-.rp-section {
-  margin-bottom: 44px;
-}
+.rp-section { margin-bottom: 44px; }
 
 .rp-section-title {
   font-size: 18px;
@@ -149,21 +144,12 @@
   font-family: 'Arial', sans-serif;
 }
 
-.rp-section p {
-  margin: 0 0 10px;
-}
+.rp-section p { margin: 0 0 10px; }
 
-.rp-list {
-  padding-left: 22px;
-  margin: 10px 0;
-}
-
-.rp-list li {
-  margin-bottom: 8px;
-}
+.rp-list { padding-left: 22px; margin: 10px 0; }
+.rp-list li { margin-bottom: 8px; }
 
 /* ── Summary table ── */
-
 .rp-table {
   border-collapse: collapse;
   font-family: 'Arial', sans-serif;
@@ -171,17 +157,13 @@
   margin-top: 14px;
 }
 
-.rp-table th,
-.rp-table td {
+.rp-table th, .rp-table td {
   padding: 7px 20px 7px 0;
   border-bottom: 1px solid #e0e0e0;
   text-align: left;
 }
 
-.rp-table th {
-  font-weight: 700;
-  color: #333;
-}
+.rp-table th { font-weight: 700; color: #333; }
 
 .rp-sev-dot {
   display: inline-block;
@@ -193,7 +175,6 @@
 }
 
 /* ── Individual findings ── */
-
 .rp-finding {
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -210,11 +191,7 @@
   flex-wrap: wrap;
 }
 
-.rp-finding-num {
-  font-weight: 700;
-  font-family: 'Arial', sans-serif;
-  color: #555;
-}
+.rp-finding-num { font-weight: 700; font-family: 'Arial', sans-serif; color: #555; }
 
 .rp-finding-cve {
   font-family: 'Courier New', monospace;
@@ -233,17 +210,8 @@
   letter-spacing: 0.5px;
 }
 
-.rp-finding-desc {
-  font-size: 13px;
-  color: #333;
-  margin: 0 0 8px;
-}
-
-.rp-finding-vector {
-  font-size: 12px;
-  color: #555;
-  margin: 0 0 10px;
-}
+.rp-finding-desc { font-size: 13px; color: #333; margin: 0 0 8px; }
+.rp-finding-vector { font-size: 12px; color: #555; margin: 0 0 10px; }
 
 .rp-finding-vector code {
   font-size: 11px;
@@ -252,20 +220,10 @@
   border-radius: 2px;
 }
 
-.rp-finding-action {
-  font-size: 13px;
-  color: #333;
-}
+.rp-finding-action { font-size: 13px; color: #333; }
 
-.rp-modules {
-  margin: 6px 0 0 18px;
-  padding: 0;
-}
-
-.rp-modules li {
-  margin-bottom: 4px;
-  font-size: 12px;
-}
+.rp-modules { margin: 6px 0 0 18px; padding: 0; }
+.rp-modules li { margin-bottom: 4px; font-size: 12px; }
 
 .rp-modules code {
   background: #f5f5f5;
@@ -274,12 +232,9 @@
   font-size: 12px;
 }
 
-.rp-modules a {
-  color: #0e639c;
-}
+.rp-modules a { color: #0066aa; }
 
 /* ── Vuln scan output ── */
-
 .rp-pre {
   background: #f8f8f8;
   border: 1px solid #e0e0e0;
@@ -302,7 +257,6 @@
 }
 
 /* ── Remarks ── */
-
 .rp-remarks-hint {
   font-family: 'Arial', sans-serif;
   font-size: 12px;
@@ -321,12 +275,10 @@
   resize: vertical;
   color: #111;
   line-height: 1.6;
+  outline: none;
 }
 
-.rp-remarks-input:focus {
-  outline: none;
-  border-color: #0e639c;
-}
+.rp-remarks-input:focus { border-color: #0066aa; }
 
 .rp-remarks-text {
   font-family: 'Georgia', serif;
@@ -336,98 +288,39 @@
   line-height: 1.7;
 }
 
-/* ── Print/no-print visibility helpers ── */
+/* ── Print/no-print visibility ── */
+.print-only { display: none; }
 
-.print-only {
-  display: none;
-}
-
-/* ── Print media ── */
-
-@media print {
-  .no-print {
-    display: none !important;
-  }
-
-  .print-only {
-    display: block;
-  }
-
-  .rp-wrapper {
-    background: white;
-  }
-
-  .rp-document {
-    max-width: none;
-    margin: 0;
-    padding: 20mm 18mm;
-    box-shadow: none;
-    font-size: 11pt;
-  }
-
-  .rp-cover {
-    page-break-after: always;
-  }
-
-  .rp-section {
-    page-break-inside: avoid;
-  }
-
-  .rp-finding {
-    page-break-inside: avoid;
-  }
-
-  .rp-pre {
-    font-size: 8pt;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .rp-section-title {
-    font-size: 14pt;
-  }
-
-  .rp-cover-title {
-    font-size: 26pt;
-  }
-
-  a {
-    color: #000;
-    text-decoration: underline;
-  }
-}
-
-/* ── Scan summary ── */
+/* ── Scan summary (dark sections) ── */
 .rp-scan-meta {
-  font-size: 13px;
-  margin-bottom: 16px;
-  color: #ccc;
+  font-size: 12px;
+  margin-bottom: 14px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
-.rp-scan-approx {
-  color: #858585;
-  font-style: italic;
-}
+.rp-scan-approx { color: var(--text-dim); font-style: italic; }
 
 .rp-subsection-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #d4d4d4;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin: 20px 0 8px 0;
+  letter-spacing: 0.08em;
+  margin: 18px 0 8px;
 }
 
-.rp-state-open   { color: #98c379; font-weight: 600; }
-.rp-state-filtered { color: #e06c75; }
+.rp-state-open     { color: var(--green); font-weight: 600; }
+.rp-state-filtered { color: var(--red); }
 
 .rp-vuln-finding {
-  background: #252526;
-  border: 1px solid #3e3e42;
-  border-left: 3px solid #e06c75;
-  border-radius: 3px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .rp-vuln-header {
@@ -439,103 +332,118 @@
 }
 
 .rp-vuln-script {
-  font-size: 12px;
-  background: #1e1e1e;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-raised);
   padding: 2px 6px;
   border-radius: 2px;
-  color: #4fc1ff;
+  color: var(--cyan);
 }
 
 .rp-vuln-state {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   padding: 2px 6px;
   border-radius: 2px;
 }
 
-.rp-state-vuln   { background: #3a1010; color: #e06c75; }
-.rp-state-likely { background: #3a2a10; color: #e5c07b; }
+.rp-state-vuln   { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,56,96,0.3); }
+.rp-state-likely { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,179,0,0.3); }
 
-.rp-vuln-title { margin: 4px 0; font-size: 13px; color: #d4d4d4; }
+.rp-vuln-title { margin: 4px 0; font-size: 12px; color: var(--text-primary); }
 
-.rp-vuln-cves {
-  margin: 4px 0;
-  font-size: 12px;
-  color: #aaa;
-}
+.rp-vuln-cves { margin: 4px 0; font-size: 11px; color: var(--text-secondary); }
 
 .rp-cve-tag {
   display: inline-block;
   margin: 0 4px 2px 0;
-  font-size: 11px;
-  background: #1a2a3a;
-  color: #4fc1ff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-raised);
+  color: var(--cyan);
   padding: 1px 5px;
   border-radius: 2px;
+  border: 1px solid var(--border-cyan);
 }
 
-.rp-vuln-meta { margin: 4px 0; font-size: 11px; color: #858585; }
-
-.rp-finding-targets { margin: 4px 0 8px; font-size: 12px; color: #aaa; }
+.rp-vuln-meta { margin: 4px 0; font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+.rp-finding-targets { margin: 4px 0 8px; font-size: 11px; color: var(--text-secondary); }
 
 /* ── Loot section ── */
-.rp-loot-group {
-  margin-bottom: 24px;
-}
+.rp-loot-group { margin-bottom: 22px; }
 
 .rp-loot-group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #4fc1ff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 8px 0;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--border-base);
 }
 
-.rp-loot-table {
-  margin-bottom: 10px;
-}
+.rp-loot-table { margin-bottom: 10px; }
 
 .rp-loot-source {
-  background: #2a2a2a;
-  font-size: 11px;
-  color: #858585;
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
   text-align: left;
   font-weight: normal;
   padding: 4px 8px;
 }
 
-.rp-loot-ts {
-  color: #585858;
-  font-size: 10px;
-}
+.rp-loot-ts { color: var(--text-dim); font-size: 10px; }
 
 .rp-loot-key {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #858585;
+  color: var(--text-secondary);
   white-space: nowrap;
   width: 160px;
   vertical-align: top;
 }
 
-.rp-loot-val {
-  vertical-align: top;
-}
+.rp-loot-val { vertical-align: top; }
 
 .rp-loot-pre {
   margin: 0;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #d4d4d4;
+  color: var(--text-primary);
 }
 
+/* ── Print media ── */
 @media print {
+  .no-print { display: none !important; }
+  .print-only { display: block; }
+
+  .rp-wrapper { background: white; }
+
+  .rp-document {
+    max-width: none;
+    margin: 0;
+    padding: 20mm 18mm;
+    box-shadow: none;
+    font-size: 11pt;
+  }
+
+  .rp-cover { page-break-after: always; }
+  .rp-section { page-break-inside: avoid; }
+  .rp-finding { page-break-inside: avoid; }
+
+  .rp-pre { font-size: 8pt; white-space: pre-wrap; word-break: break-all; }
+  .rp-section-title { font-size: 14pt; }
+  .rp-cover-title { font-size: 26pt; }
+
+  a { color: #000; text-decoration: underline; }
+
   .rp-loot-group-title { color: #000; border-color: #ccc; }
   .rp-loot-source { background: #f5f5f5; }
   .rp-loot-pre { color: #000; }
