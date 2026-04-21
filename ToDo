@@ -14,12 +14,9 @@ cd ~/Documents/GitHub/Msf-Web-Interface/backend && go run .
 inlcuding colour coding for compromised hosts.
 
 msfvenom
+C:\Windows\Temp\payload.exe
+C:\Users\UserName\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\payload.exe
 
-Wrong number of arguments expected: 1, received: 4
-Usage: sessions <id>
-Interact with a different session Id.
-This command only accepts one positive numeric argument.
-This works the same as calling this from the MSF shell: sessions -i <session id>
 
 I want to incorporate Linpeas and PEASS to be runnable dependent on OS detected,
 the results from these scans are filtered for useful information to include in the report
