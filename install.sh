@@ -39,7 +39,7 @@ fi
 ok "curl"
 
 # ── 4. apt-installable pentesting tools not in default Kali ───────────────────
-APT_TOOLS=(wpscan hostapd-mana hcxtools)
+APT_TOOLS=(wpscan hostapd-mana hcxtools python3-pam)
 for pkg in "${APT_TOOLS[@]}"; do
     if dpkg -s "$pkg" &>/dev/null 2>&1; then
         ok "$pkg (already installed)"

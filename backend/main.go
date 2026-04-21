@@ -66,7 +66,6 @@ func main() {
 
 	// Rate-limited auth routes (10 requests/minute per IP)
 	authLimiter := httprate.LimitByIP(10, time.Minute)
-	router.With(authLimiter).Post("/api/auth/register", handleRegister(db))
 	router.With(authLimiter).Post("/api/auth/login", handleLogin(db))
 	router.Post("/api/auth/logout", handleLogout)
 	router.Get("/api/ws", handleWebSocket(db))
@@ -181,71 +180,13 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `{"status":"ok"}`)
 }
 
-func handleRegister(db *DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		var req struct {
-			Username      string `json:"username"`
-			Email         string `json:"email"`
-			Password      string `json:"password"`
-			SudoPassword  string `json:"sudo_password"`
-		}
-
-		if err := parseJSON(r, &req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":"Invalid request"}`)
-			return
-		}
-
-		if req.Username == "" || req.Email == "" || req.Password == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":"username, email and password are required"}`)
-			return
-		}
-
-		if req.SudoPassword == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":"system password is required for privileged operations"}`)
-			return
-		}
-
-		if err := ValidateSudoPassword(req.SudoPassword); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"error":"system password invalid: %s"}`, err.Error())
-			return
-		}
-
-		user, err := db.CreateUser(req.Username, req.Email, req.Password)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"error":"%s"}`, err.Error())
-			return
-		}
-
-		SetSudoPassword(user.ID, req.SudoPassword)
-
-		token, err := generateToken(user.ID, user.Username)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"error":"Failed to generate token"}`)
-			return
-		}
-
-		setAuthCookie(w, token)
-		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"user":{"id":%d,"username":"%s","email":"%s"}}`, user.ID, user.Username, user.Email)
-	}
-}
-
 func handleLogin(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		var req struct {
-			Username     string `json:"username"`
-			Password     string `json:"password"`
-			SudoPassword string `json:"sudo_password"`
+			Username string `json:"username"`
+			Password string `json:"password"`
 		}
 
 		if err := parseJSON(r, &req); err != nil {
@@ -254,32 +195,26 @@ func handleLogin(db *DB) http.HandlerFunc {
 			return
 		}
 
-		if req.SudoPassword == "" {
+		if req.Username == "" || req.Password == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":"system password is required"}`)
+			fmt.Fprint(w, `{"error":"username and password are required"}`)
 			return
 		}
 
-		user, err := db.GetUser(req.Username)
+		if err := authenticateLinuxUser(req.Username, req.Password); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+			return
+		}
+
+		user, err := db.GetOrCreateUser(req.Username)
 		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, `{"error":"Invalid credentials"}`)
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"Failed to initialise user"}`)
 			return
 		}
 
-		if err := user.VerifyPassword(req.Password); err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, `{"error":"Invalid credentials"}`)
-			return
-		}
-
-		if err := ValidateSudoPassword(req.SudoPassword); err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, `{"error":"system password invalid: %s"}`, err.Error())
-			return
-		}
-
-		SetSudoPassword(user.ID, req.SudoPassword)
+		SetSudoPassword(user.ID, req.Password)
 
 		token, err := generateToken(user.ID, user.Username)
 		if err != nil {
@@ -290,7 +225,7 @@ func handleLogin(db *DB) http.HandlerFunc {
 
 		setAuthCookie(w, token)
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"user":{"id":%d,"username":"%s","email":"%s"}}`, user.ID, user.Username, user.Email)
+		fmt.Fprintf(w, `{"user":{"id":%d,"username":"%s"}}`, user.ID, user.Username)
 	}
 }
 

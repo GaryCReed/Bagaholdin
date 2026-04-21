@@ -8,10 +8,7 @@ interface LoginPageProps {
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [sudoPassword, setSudoPassword] = useState('');
-  const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,13 +18,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     setLoading(true);
 
     try {
-      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const payload: any = { username, password, sudo_password: sudoPassword };
-      if (isRegister) payload.email = email;
-
-      await axios.post(endpoint, payload);
-
-      sessionStorage.setItem('msf_sudo', sudoPassword);
+      await axios.post('/api/auth/login', { username, password });
+      sessionStorage.setItem('msf_sudo', password);
       onLogin();
     } catch (err: any) {
       setError(
@@ -57,24 +49,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Linux username (e.g. kali)"
               required
             />
           </div>
-
-          {isRegister && (
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                required
-              />
-            </div>
-          )}
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
@@ -83,19 +61,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="sudo-password">System Password (sudo)</label>
-            <input
-              type="password"
-              id="sudo-password"
-              value={sudoPassword}
-              onChange={(e) => setSudoPassword(e.target.value)}
-              placeholder="Local system password for privileged tools"
+              placeholder="System / sudo password"
               required
             />
           </div>
@@ -103,15 +69,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" disabled={loading}>
-            {loading ? 'Loading...' : isRegister ? 'Register' : 'Login'}
-          </button>
-
-          <button
-            type="button"
-            className="toggle-button"
-            onClick={() => setIsRegister(!isRegister)}
-          >
-            {isRegister ? 'Back to Login' : 'Create Account'}
+            {loading ? 'Authenticating…' : 'Login'}
           </button>
         </form>
       </div>

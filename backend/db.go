@@ -535,6 +535,51 @@ func (u *User) VerifyPassword(password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
 }
 
+// GetOrCreateUser returns an existing user by username, or creates one if not found.
+// Authentication is handled externally (PAM/sudo); no app password is stored.
+func (db *DB) GetOrCreateUser(username string) (*User, error) {
+	if db.isMemory {
+		return db.memory.GetOrCreateUser(username)
+	}
+	user, err := db.GetUser(username)
+	if err == nil {
+		return user, nil
+	}
+	// Use username@localhost as a unique placeholder email.
+	email := username + "@localhost"
+	// Placeholder hash — never verified; PAM handles auth.
+	hash, _ := bcrypt.GenerateFromPassword([]byte(email), bcrypt.MinCost)
+	user = &User{}
+	err = db.conn.QueryRow(
+		db.rebind("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?) RETURNING id, username, email, created_at"),
+		username, email, string(hash),
+	).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+	return user, nil
+}
+
+func (m *MemoryDB) GetOrCreateUser(username string) (*User, error) {
+	if user, err := m.GetUser(username); err == nil {
+		return user, nil
+	}
+	email := username + "@localhost"
+	hash, _ := bcrypt.GenerateFromPassword([]byte(email), bcrypt.MinCost)
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	user := &User{
+		ID:           m.nextID,
+		Username:     username,
+		Email:        email,
+		PasswordHash: string(hash),
+		CreatedAt:    time.Now().Format("2006-01-02 15:04:05"),
+	}
+	m.users[username] = user
+	m.nextID++
+	return user, nil
+}
+
 // CreateSession creates a new session for a user
 func (db *DB) CreateSession(userID int, sessionName, targetHost string) (*Session, error) {
 	if db.isMemory {
