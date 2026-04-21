@@ -153,10 +153,16 @@ info "Building frontend (production)…"
 (cd "$SCRIPT_DIR/frontend" && npm run build 2>&1 | tail -3)
 ok "Frontend built → frontend/build/"
 
-# ── 10. Build backend binary ──────────────────────────────────────────────────
+# ── 10. Copy frontend build into backend for embedding ────────────────────────
+info "Copying frontend build into backend/ui for embedding…"
+rm -rf "$SCRIPT_DIR/backend/ui"
+cp -r "$SCRIPT_DIR/frontend/build" "$SCRIPT_DIR/backend/ui"
+ok "Frontend ready to embed → backend/ui/"
+
+# ── 11. Build backend binary (embeds backend/ui/ into the binary) ─────────────
 info "Building backend binary…"
 (cd "$SCRIPT_DIR/backend" && go build -o msf-web .)
-ok "Backend binary → backend/msf-web"
+ok "Backend binary → backend/msf-web (single binary, frontend embedded)"
 
 # ── verify default Kali tools present ─────────────────────────────────────────
 echo ""

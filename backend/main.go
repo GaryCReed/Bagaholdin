@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -151,12 +152,19 @@ func main() {
 		r.Post("/wifi/reset", handleResetWifiAdapters())
 	})
 
-	// Serve React SPA: real files are served directly, everything else falls back to index.html
-	buildDir := "../frontend/build"
-	fileServer := http.FileServer(http.Dir(buildDir))
+	// Serve React SPA from the embedded filesystem (backend/ui/ at compile time).
+	sub, _ := fs.Sub(staticFiles, "ui")
+	fileServer := http.FileServer(http.FS(sub))
 	router.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := os.Stat(buildDir + r.URL.Path); os.IsNotExist(err) {
-			http.ServeFile(w, r, buildDir+"/index.html")
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(sub, path); err != nil {
+			// SPA fallback: unknown routes get index.html so React Router handles them
+			data, _ := fs.ReadFile(sub, "index.html")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(data)
 			return
 		}
 		fileServer.ServeHTTP(w, r)

@@ -8,6 +8,7 @@ backend/msf-web
 backend/msf-web-interface
 backend/*.exe
 backend/*.db
+backend/ui/
 
 # Node / React
 frontend/node_modules/
