@@ -276,6 +276,12 @@ func upsertHostBruteforceLoot(db *DB, userID, attackSessionID int, target, servi
 	}
 
 	AppendBruteforceCredential(sessID, target, username, password, service)
+
+	// Also store directly in the attacking session so credentials appear
+	// in that session's Loot tab (action 8).
+	if attackSessionID > 0 && attackSessionID != sessID {
+		AppendBruteforceCredential(attackSessionID, target, username, password, service)
+	}
 }
 
 func runHydra(sessionID int, target string, req BruteforceRequest, db *DB, userID int) {
