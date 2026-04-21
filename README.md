@@ -1,6 +1,27 @@
-# Msf-Web-Interface
+# Bagaholdin
 
-A Metasploit Pro-style web interface for managing penetration test engagements. Each project groups target hosts into sessions, with a live msfconsole console, automated scanning, CVE analysis, post-exploitation tooling, loot extraction, and structured report generation.
+> **Legal Notice:** This tool is intended **solely for educational purposes** and for use on networks you own or have **explicit written permission** to test. Unauthorised use against systems you do not own or have permission to access is illegal and unethical. The authors accept no liability for misuse.
+
+A Metasploit Pro-style web interface for managing penetration test engagements. Bagaholdin is currently in a **workable state** — core features function as described, but it is under active development and not production-hardened. Expect rough edges, and treat it as a learning platform rather than a finished tool.
+
+Each project groups target hosts into sessions, providing a live msfconsole terminal, automated scanning, CVE analysis, post-exploitation tooling, loot extraction, and structured report generation — all through a browser.
+
+---
+
+## Status
+
+This project is **workable, not finished.** The following areas are functional:
+
+- Project and session management
+- Live msfconsole console over WebSocket
+- nmap-based network and vulnerability scanning
+- CVE lookup and GitHub PoC search
+- Post-exploitation quick commands and loot extraction
+- Engagement report generation
+
+Known rough edges exist across the UI and backend. Contributions and issues are welcome.
+
+---
 
 ## Features
 
@@ -14,11 +35,15 @@ A Metasploit Pro-style web interface for managing penetration test engagements. 
 - **Loot extraction** — Post-ex command output is parsed automatically for credentials, hashes, user accounts, system info, and other artefacts, saved to a per-session loot file.
 - **Report generation** — Produces a structured engagement report covering scan summary, CVE findings, post-ex output, and extracted loot.
 - **Authentication** — JWT-based login stored in an httpOnly cookie. Bcrypt password hashing.
-- **Storage** — PostgreSQL for full persistence, or in-memory store for zero-config use.
+- **Storage** — SQLite for persistent storage, or in-memory store for zero-config use.
+
+---
 
 ## Quick Start
 
 See [QUICKSTART.md](QUICKSTART.md).
+
+---
 
 ## Technology Stack
 
@@ -26,10 +51,12 @@ See [QUICKSTART.md](QUICKSTART.md).
 |---|---|
 | Backend | Go 1.20+, Chi router, Gorilla WebSocket |
 | Frontend | React 18, TypeScript, React Router |
-| Database | PostgreSQL 12+ or in-memory |
+| Database | SQLite (default) or in-memory |
 | Auth | JWT (httpOnly cookie, 24-hour expiry, bcrypt) |
 | Scanning | nmap |
 | Console | msfconsole (one process per session) |
+
+---
 
 ## Project Structure
 
@@ -37,7 +64,7 @@ See [QUICKSTART.md](QUICKSTART.md).
 .
 ├── backend/
 │   ├── main.go          # Router, all HTTP handlers, server entry point
-│   ├── db.go            # Database models, queries (PostgreSQL + in-memory)
+│   ├── db.go            # Database models, queries (SQLite + in-memory)
 │   ├── auth.go          # JWT generation, validation, cookie helpers
 │   ├── websocket.go     # WebSocket upgrade, session fan-out broadcaster
 │   ├── executor.go      # msfconsole process lifecycle, stdin/stdout fan-out
@@ -49,51 +76,53 @@ See [QUICKSTART.md](QUICKSTART.md).
 ├── frontend/
 │   └── src/
 │       └── components/
-│           ├── LoginPage.tsx       # Register / login
+│           ├── LoginPage.tsx       # Login
 │           ├── ProjectsPage.tsx    # Project list, create project, network info
 │           ├── Dashboard.tsx       # Network scanner, session cards
 │           ├── SessionDetail.tsx   # Main workspace (all action panels)
 │           ├── Console.tsx         # Live msfconsole terminal
 │           └── ReportPage.tsx      # Engagement report
 ├── docs/
-├── setup-postgres.sh    # Automated PostgreSQL setup
 ├── start.sh             # Start backend + frontend together
 ├── QUICKSTART.md
 └── README.md
 ```
 
+---
+
 ## Workflow
 
 ```
-Login / Register
-      │
-      ▼
+Login
+  │
+  ▼
 Create Project  ──►  Scan Network  ──►  Add Hosts as Sessions
-      │
-      ▼
+  │
+  ▼
 Open Session
-      │
-      ├─► 1. Vulnerability Scan   nmap -sV -O --script=vuln,vulners
-      │
-      ├─► 2. Enumeration          Services + MSF modules from scan XML
-      │
-      ├─► 3. CVE Analysis         CVEs → NVD scores → GitHub PoCs
-      │
-      ├─► 4. Shells               Manage active MSF sessions
-      │
-      ├─► 5. Post Exploitation    Quick commands + recommended modules
-      │
-      └─► 6. Report               Structured engagement report
+  │
+  ├─► 1. Vulnerability Scan   nmap -sV -O --script=vuln,vulners
+  │
+  ├─► 2. Enumeration          Services + MSF modules from scan XML
+  │
+  ├─► 3. CVE Analysis         CVEs → NVD scores → GitHub PoCs
+  │
+  ├─► 4. Shells               Manage active MSF sessions
+  │
+  ├─► 5. Post Exploitation    Quick commands + recommended modules
+  │
+  └─► 6. Report               Structured engagement report
 ```
 
 The MSF Console is always visible alongside the action panels. Commands typed there go directly to the session's msfconsole process; output from any panel action also streams through the console.
+
+---
 
 ## API Reference
 
 ### Auth (public)
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/auth/register` | Create account |
 | POST | `/api/auth/login` | Login, sets cookie |
 | POST | `/api/auth/logout` | Clear cookie |
 
@@ -136,6 +165,8 @@ The MSF Console is always visible alongside the action panels. Commands typed th
 | GET | `/api/network` | Local network interfaces |
 | GET | `/api/health` | Health check |
 
+---
+
 ## Environment Variables
 
 Create `backend/.env`:
@@ -144,7 +175,7 @@ Create `backend/.env`:
 # Required
 JWT_SECRET=change-this-to-a-long-random-string
 
-# Database — omit or set to memory:// for zero-config in-memory store
+# Database — omit for default SQLite, or set to memory:// for in-memory store
 DATABASE_URL=postgresql://postgres:@localhost:5432/msf_web?sslmode=disable
 
 # Optional
@@ -152,6 +183,8 @@ MSFCONSOLE_PATH=/usr/bin/msfconsole   # defaults to 'msfconsole' on PATH
 COOKIE_SECURE=true                     # set in production (HTTPS only)
 ALLOWED_ORIGIN=https://your-domain     # restrict WebSocket origin in production
 ```
+
+---
 
 ## Building for Production
 
@@ -168,6 +201,8 @@ go build -o msf-server
 
 The Go binary serves the React build as static files, so only port 8080 needs to be exposed.
 
+---
+
 ## Security Notes
 
 - All protected routes require a valid JWT cookie set at login.
@@ -175,7 +210,17 @@ The Go binary serves the React build as static files, so only port 8080 needs to
 - Auth routes are rate-limited to 10 requests per minute per IP.
 - The WebSocket endpoint validates the JWT before upgrading the connection.
 - Set `COOKIE_SECURE=true` and `ALLOWED_ORIGIN` when deploying over HTTPS.
-- This tool is intended for use on networks you own or have explicit authorisation to test.
+- **Only use this tool on networks you own or have explicit written authorisation to test.**
+
+---
+
+## Legal
+
+This software is provided for **educational purposes only**. Use it to learn about penetration testing concepts in a controlled lab environment, on your own systems, or on systems where you hold explicit written permission from the owner.
+
+**Do not use this tool against systems you do not own or are not authorised to test.** Doing so is illegal in most jurisdictions and carries serious consequences. The authors and contributors accept no responsibility for any unlawful use.
+
+---
 
 ## License
 

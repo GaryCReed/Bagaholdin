@@ -1,5 +1,11 @@
 # Quick Start
 
+> **Legal Notice:** Bagaholdin is for **educational purposes only** and must only be used on networks you own or have **explicit written permission** to test. Unauthorised use is illegal.
+
+> **Status:** This project is in a **workable state** — it functions, but is not production-hardened. Treat it as a learning platform.
+
+---
+
 ## Prerequisites
 
 | Requirement | Version | Notes |
@@ -8,13 +14,10 @@
 | Node.js | 18+ | `node --version` |
 | msfconsole | any | `which msfconsole` |
 | nmap | any | `which nmap` |
-| PostgreSQL | 12+ | Optional — omit for in-memory mode |
 
 ---
 
-## Option A — Zero-Config (In-Memory Store)
-
-No database setup required. All data is lost on restart.
+## Starting the App
 
 **1. Configure the backend**
 
@@ -35,41 +38,7 @@ Backend starts on `http://localhost:8080`, frontend on `http://localhost:3000`.
 
 **3. Open the app**
 
-Navigate to `http://localhost:3000`, register an account, and log in.
-
----
-
-## Option B — PostgreSQL (Persistent Storage)
-
-**1. Set up the database**
-
-```bash
-chmod +x setup-postgres.sh
-sudo ./setup-postgres.sh
-```
-
-Or manually:
-
-```bash
-sudo systemctl start postgresql
-sudo -u postgres createdb msf_web
-```
-
-**2. Configure the backend**
-
-```bash
-cat > backend/.env <<'EOF'
-JWT_SECRET=change-this-to-a-long-random-string
-DATABASE_URL=postgresql://postgres:@localhost:5432/msf_web?sslmode=disable
-EOF
-```
-
-**3. Start everything**
-
-```bash
-chmod +x start.sh
-./start.sh
-```
+Navigate to `http://localhost:3000` and log in using your Linux system credentials.
 
 ---
 
@@ -147,6 +116,3 @@ Scan output is written to `/tmp/msf-scans/`. Check that directory for `.txt` and
 
 **Port 3000 already in use**
 `npm start` will offer to use a different port. The frontend proxy is configured for port 8080, so the backend port must not change.
-
-**PostgreSQL connection refused**
-Verify `sudo systemctl status postgresql` and that the `msf_web` database exists: `sudo -u postgres psql -l`.
