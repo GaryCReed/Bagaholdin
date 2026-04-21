@@ -150,7 +150,7 @@
 
 /* Version tag at bottom */
 .login-page::after {
-  content: 'MSF-WEB v1.0 // AUTHORIZED USE ONLY';
+  content: 'BAGAHOLDIN v1.0 // AUTHORIZED USE ONLY';
   position: absolute;
   bottom: 20px;
   left: 0;

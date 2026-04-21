@@ -37,8 +37,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     <div className="login-page">
       <div className="login-container">
         <div className="login-header">
-          <h1>MSF Web Interface</h1>
-          <p>Metasploit Pro-like Web Console</p>
+          <h1>Bagaholdin</h1>
+          <p>Offensive Operations Platform</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
