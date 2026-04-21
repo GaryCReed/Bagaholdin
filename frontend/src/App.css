@@ -9,6 +9,13 @@
   overflow: hidden;
 }
 
+/* Report page opens in its own tab and needs unrestricted scroll */
+.app:has(.rp-wrapper) {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
 .app.loading {
   align-items: center;
   justify-content: center;

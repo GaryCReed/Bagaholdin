@@ -1,450 +1,454 @@
-/* ── Report Page ── */
-.rp-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
+/* ══════════════════════════════════════════════
+   REPORT PAGE — all document styles use
+   explicit hex values (no CSS vars) so the
+   printed PDF renders correctly on white.
+   CSS vars are only used for the toolbar.
+══════════════════════════════════════════════ */
 
-.rp-wrapper {
-  min-height: 100vh;
-  background: var(--bg-base);
+/* ── Loading ─────────────────────────────── */
+.rp-loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 100vh; color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 13px;
 }
+.rp-load-err { color: #c62828; }
+
+/* ── Wrapper & toolbar ───────────────────── */
+.rp-wrapper { min-height: 100vh; background: var(--bg-base); }
 
 .rp-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 24px;
-  background: var(--bg-surface);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 24px; background: var(--bg-surface);
   border-bottom: 1px solid var(--border-base);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  position: sticky; top: 0; z-index: 20;
 }
-
-.rp-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.rp-toolbar-title {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--cyan);
-}
-
-.rp-toolbar-hint {
-  font-size: 11px;
-  color: var(--text-dim);
-}
+.rp-toolbar-left  { display: flex; align-items: center; gap: 10px; }
+.rp-toolbar-brand { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--cyan); letter-spacing: .08em; }
+.rp-toolbar-sep   { color: var(--text-dim); }
+.rp-toolbar-title { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.rp-toolbar-hint  { font-size: 11px; color: var(--text-dim); }
 
 .rp-btn-print {
-  padding: 6px 16px;
-  background: var(--cyan-dim);
-  color: var(--cyan);
-  border: 1px solid var(--border-cyan);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+  padding: 7px 18px; background: var(--cyan-dim); color: var(--cyan);
+  border: 1px solid var(--border-cyan); border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 600; cursor: pointer;
   transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
+.rp-btn-print:hover { background: rgba(0,212,255,.2); box-shadow: var(--glow-cyan); }
 
-.rp-btn-print:hover { background: rgba(0,212,255,0.2); box-shadow: var(--glow-cyan); }
-
-/* ── Report document (white card for print) ── */
+/* ── Document shell ─────────────────────── */
 .rp-document {
-  max-width: 900px;
-  margin: 32px auto;
-  background: #fff;
-  color: #111;
-  box-shadow: var(--shadow-lg);
-  padding: 60px 72px;
+  max-width: 940px; margin: 32px auto 64px;
+  background: #fff; color: #111;
+  box-shadow: 0 4px 32px rgba(0,0,0,.18);
+  border-radius: 6px; overflow: hidden;
   font-family: 'Georgia', 'Times New Roman', serif;
-  font-size: 14px;
-  line-height: 1.7;
-  border-radius: var(--radius-md);
+  font-size: 13.5px; line-height: 1.72;
 }
 
-/* ── Cover page ── */
+/* ── Print visibility ───────────────────── */
+.print-only { display: none !important; }
+.no-print   { }
+
+/* ── Page footer (print only) ───────────── */
+.rp-page-footer {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  text-align: center; font-family: Arial, sans-serif;
+  font-size: 8pt; color: #aaa; border-top: 1px solid #e0e0e0;
+  padding: 3px 0; background: #fff;
+}
+
+/* ══════════════════════════════════════════
+   COVER PAGE
+══════════════════════════════════════════ */
 .rp-cover {
-  text-align: center;
-  padding: 60px 0 80px;
-  border-bottom: 3px solid #111;
-  margin-bottom: 48px;
-  page-break-after: always;
+  display: flex; flex-direction: column;
+  min-height: 560px;
 }
+.rp-cover-top-bar { height: 10px; }
 
-.rp-cover-label {
-  font-family: 'Arial', sans-serif;
-  font-size: 11px;
-  letter-spacing: 3px;
-  color: #c62828;
-  font-weight: 700;
-  margin-bottom: 24px;
+.rp-cover-inner {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; text-align: center;
+  padding: 52px 80px 36px;
 }
+.rp-cover-shield { width: 72px; height: 80px; margin-bottom: 24px; }
 
+.rp-cover-eyebrow {
+  font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 4px; text-transform: uppercase; color: #666; margin-bottom: 10px;
+}
 .rp-cover-title {
-  font-size: 32px;
-  font-weight: 700;
-  color: #111;
-  margin: 0 0 48px;
-  font-family: 'Georgia', serif;
+  font-family: Georgia, serif; font-size: 28px; font-weight: 700;
+  color: #111; margin: 0 0 8px; line-height: 1.25;
 }
-
-.rp-cover-table {
-  margin: 0 auto;
-  border-collapse: collapse;
-  width: 420px;
-  font-family: 'Arial', sans-serif;
-  font-size: 13px;
+.rp-cover-target {
+  font-family: 'Courier New', monospace; font-size: 14px; color: #555;
+  margin-bottom: 36px;
 }
-
-.rp-cover-table td {
-  padding: 8px 16px;
-  border-bottom: 1px solid #e0e0e0;
-  text-align: left;
+.rp-cover-divider {
+  width: 64px; height: 3px; background: #ddd; margin: 0 auto 36px;
 }
+.rp-cover-meta {
+  border-collapse: collapse; width: 420px; text-align: left;
+  font-family: Arial, sans-serif; font-size: 13px;
+}
+.rp-cover-meta td {
+  padding: 9px 14px; border-bottom: 1px solid #ebebeb;
+}
+.rp-cover-meta td:first-child { color: #666; width: 44%; font-weight: 600; }
 
-.rp-cover-table td:first-child {
-  color: #555;
-  width: 40%;
-  font-weight: 600;
+.rp-cover-footer {
+  padding: 16px 80px; font-family: Arial, sans-serif;
+  font-size: 11px; color: #aaa; text-align: center;
+  border-top: 1px solid #ebebeb;
 }
 
 .rp-risk-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 3px;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-family: 'Arial', sans-serif;
+  display: inline-block; padding: 3px 12px; border-radius: 4px;
+  color: #fff; font-size: 12px; font-weight: 700;
+  letter-spacing: 1px; font-family: Arial, sans-serif;
 }
 
-/* ── Sections ── */
-.rp-section { margin-bottom: 44px; }
+/* ══════════════════════════════════════════
+   SECTIONS
+══════════════════════════════════════════ */
+.rp-section { padding: 0 72px; margin-bottom: 44px; }
 
 .rp-section-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #111;
-  border-bottom: 2px solid #111;
-  padding-bottom: 6px;
-  margin: 0 0 18px;
-  font-family: 'Arial', sans-serif;
+  font-family: Arial, sans-serif; font-size: 17px; font-weight: 700;
+  color: #111; border-bottom: 2.5px solid #111;
+  padding-bottom: 7px; margin: 0 0 20px;
 }
 
-.rp-section p { margin: 0 0 10px; }
+.rp-section p { margin: 0 0 12px; }
+.rp-no-data { color: #999; font-style: italic; font-family: Arial, sans-serif; font-size: 13px; }
 
-.rp-list { padding-left: 22px; margin: 10px 0; }
-.rp-list li { margin-bottom: 8px; }
-
-/* ── Summary table ── */
-.rp-table {
-  border-collapse: collapse;
-  font-family: 'Arial', sans-serif;
-  font-size: 13px;
-  margin-top: 14px;
+.rp-sub-title {
+  font-family: Arial, sans-serif; font-size: 13px; font-weight: 700;
+  color: #333; text-transform: uppercase; letter-spacing: .05em;
+  border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; margin: 22px 0 10px;
+  display: flex; align-items: center; gap: 10px;
 }
+.rp-sub-note { font-weight: 400; font-size: 11px; color: #888; text-transform: none; letter-spacing: 0; }
 
-.rp-table th, .rp-table td {
-  padding: 7px 20px 7px 0;
-  border-bottom: 1px solid #e0e0e0;
-  text-align: left;
+/* ── TOC ─────────────────────────────────── */
+.rp-toc-table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 13px; }
+.rp-toc-table td { padding: 6px 8px; border-bottom: 1px dotted #e0e0e0; }
+.rp-toc-num  { width: 32px; color: #555; font-weight: 700; }
+.rp-toc-item { color: #222; }
+
+/* ── Meta table (scope section) ─────────── */
+.rp-meta-table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 13px; }
+.rp-meta-table td { padding: 7px 14px 7px 0; border-bottom: 1px solid #ebebeb; }
+.rp-meta-table td:first-child { color: #555; width: 160px; font-weight: 600; }
+
+/* ── Phases (methodology) ───────────────── */
+.rp-phases { display: flex; flex-direction: column; gap: 12px; margin: 14px 0; }
+.rp-phase  { display: flex; gap: 16px; align-items: flex-start; }
+.rp-phase-num {
+  min-width: 28px; height: 28px; border-radius: 50%;
+  background: #111; color: #fff; font-family: Arial, sans-serif;
+  font-size: 13px; font-weight: 700; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
 }
+.rp-phase-title { font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; color: #222; margin-bottom: 2px; }
+.rp-phase-desc  { font-size: 13px; color: #444; line-height: 1.6; }
 
-.rp-table th { font-weight: 700; color: #333; }
+/* ── KPI boxes ─────────────────────────── */
+.rp-kpi-row { display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+.rp-kpi {
+  flex: 1; min-width: 90px; border: 1px solid #e8e8e8;
+  border-top: 3px solid #333; border-radius: 4px;
+  padding: 14px 12px; text-align: center; background: #fafafa;
+}
+.rp-kpi-num { font-family: Arial, sans-serif; font-size: 28px; font-weight: 700; color: #111; line-height: 1.1; }
+.rp-kpi-lbl { font-family: Arial, sans-serif; font-size: 10px; color: #777; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
 
-.rp-sev-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
+/* ── Charts ─────────────────────────────── */
+.rp-charts-row {
+  display: flex; gap: 16px; margin: 20px 0 8px; flex-wrap: wrap;
+}
+.rp-chart-box {
+  border: 1px solid #e8e8e8; border-radius: 4px;
+  padding: 16px; background: #fafafa; flex: 1; min-width: 200px;
+}
+.rp-chart-wide { flex: 2; min-width: 320px; }
+.rp-chart-title {
+  font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+  color: #555; text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 12px;
+}
+.rp-chart-body { display: flex; align-items: center; gap: 16px; }
+.rp-donut-body { align-items: flex-start; }
+
+/* ── Legend ─────────────────────────────── */
+.rp-legend { display: flex; flex-direction: column; gap: 6px; }
+.rp-legend-row { display: flex; align-items: center; gap: 8px; font-family: Arial, sans-serif; font-size: 12px; }
+.rp-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.rp-legend-name { flex: 1; color: #333; }
+.rp-legend-val { font-weight: 700; color: #111; min-width: 20px; text-align: right; }
+
+/* ── Inline badge ───────────────────────── */
+.rp-inline-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 3px;
+  color: #fff; font-size: 11px; font-weight: 700;
+  font-family: Arial, sans-serif; letter-spacing: .5px;
   vertical-align: middle;
 }
 
-/* ── Individual findings ── */
+/* ── Tables ─────────────────────────────── */
+.rp-table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12.5px; margin-top: 8px; }
+.rp-table th { background: #f4f4f4; font-weight: 700; color: #333; padding: 8px 10px; border-bottom: 2px solid #ddd; text-align: left; }
+.rp-table td { padding: 7px 10px; border-bottom: 1px solid #ebebeb; vertical-align: top; }
+.rp-table tbody tr:hover { background: #fafafa; }
+
+.rp-mono   { font-family: 'Courier New', monospace; font-size: 11.5px; }
+.rp-id-col { white-space: nowrap; color: #555; }
+.rp-score-col { white-space: nowrap; font-weight: 700; font-family: Arial, sans-serif; }
+.rp-desc-col  { color: #444; font-size: 11.5px; }
+
+/* ── Summary table ─────────────────────── */
+.rp-summary-table td { font-size: 12px; }
+
+/* ── OS card ────────────────────────────── */
+.rp-os-card {
+  border: 1px solid #e0e0e0; border-left: 4px solid #1565c0;
+  border-radius: 4px; padding: 14px 18px; margin-bottom: 18px;
+  background: #f7f9ff;
+}
+.rp-os-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.rp-os-label  { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; color: #1565c0; text-transform: uppercase; letter-spacing: .05em; }
+.rp-os-name   { font-family: Arial, sans-serif; font-size: 15px; font-weight: 700; color: #111; }
+.rp-os-family { display: inline; font-family: Arial, sans-serif; font-size: 13px; color: #555; margin-left: 4px; }
+.rp-os-note   { font-family: Arial, sans-serif; font-size: 11px; color: #888; font-style: italic; margin-top: 4px; }
+
+/* ── Services table ─────────────────────── */
+.rp-services-table .rp-port-cell { font-weight: 700; }
+.rp-version-cell { color: #555; font-size: 12px; }
+
+.rp-state-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-family: Arial, sans-serif; font-size: 10.5px; font-weight: 700;
+}
+.rp-open     { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.rp-filtered { background: #fce4ec; color: #c62828; border: 1px solid #f48fb1; }
+
+/* ═══════════════════════════════════════════
+   FINDING CARDS
+═══════════════════════════════════════════ */
 .rp-finding {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 16px 20px;
-  margin-bottom: 18px;
-  page-break-inside: avoid;
+  border: 1px solid #ddd; border-left: 5px solid #546e7a;
+  border-radius: 4px; margin-bottom: 22px;
+  page-break-inside: avoid; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
 }
 
-.rp-finding-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
+.rp-fhdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid #eee;
+  flex-wrap: wrap; gap: 8px; background: #fafafa;
+}
+.rp-fhdr-left  { display: flex; align-items: center; gap: 10px; }
+.rp-fhdr-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.rp-fid {
+  font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+  background: #eee; color: #555; padding: 2px 8px; border-radius: 3px;
+}
+.rp-fcve {
+  font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700; color: #111;
+}
+.rp-sev-badge {
+  padding: 3px 10px; border-radius: 3px; color: #fff;
+  font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: .5px;
+}
+.rp-score-chip {
+  padding: 2px 8px; border-radius: 3px; border: 1.5px solid;
+  font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+  background: transparent;
+}
+.rp-cvss-ver { font-family: Arial, sans-serif; font-size: 10px; color: #999; }
+
+/* CVSS gauge */
+.rp-gauge { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: #f8f8f8; border-bottom: 1px solid #eee; }
+.rp-gauge-track { flex: 1; height: 8px; background: #e8e8e8; border-radius: 4px; overflow: hidden; }
+.rp-gauge-fill  { height: 100%; border-radius: 4px; transition: width .4s; }
+.rp-gauge-val   { font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; color: #333; white-space: nowrap; min-width: 60px; }
+
+/* Finding body rows */
+.rp-fbody { padding: 4px 0 4px; }
+
+.rp-frow {
+  display: flex; gap: 0; padding: 9px 16px;
+  border-bottom: 1px solid #f4f4f4; align-items: flex-start;
+}
+.rp-frow:last-child { border-bottom: none; }
+
+.rp-flbl {
+  font-family: Arial, sans-serif; font-size: 10.5px; font-weight: 700;
+  color: #666; text-transform: uppercase; letter-spacing: .05em;
+  min-width: 148px; flex-shrink: 0; padding-top: 2px; line-height: 1.5;
+}
+.rp-fval  { flex: 1; font-size: 13px; color: #333; line-height: 1.65; }
+.rp-desc-text { color: #333; }
+
+.rp-vector {
+  font-family: 'Courier New', monospace; font-size: 11px;
+  background: #f5f5f5; padding: 2px 6px; border-radius: 3px;
+  word-break: break-all; color: #333;
 }
 
-.rp-finding-num { font-weight: 700; font-family: 'Arial', sans-serif; color: #555; }
+.rp-exploit-note { font-style: italic; color: #555; font-size: 12px; display: block; margin-bottom: 4px; }
+.rp-mod-list { margin: 4px 0 0 18px; padding: 0; }
+.rp-mod-list li { margin-bottom: 3px; font-size: 12px; }
+.rp-mod-list code { background: #f5f5f5; padding: 1px 5px; border-radius: 2px; font-size: 11px; }
+.rp-stars { color: #f57c00; font-size: 11px; }
+.rp-rdesc { color: #666; font-size: 11px; }
 
-.rp-finding-cve {
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  font-weight: 700;
-  color: #111;
+.rp-remed { border-radius: 0 0 3px 3px; }
+.rp-ref-url { font-family: 'Courier New', monospace; font-size: 11px; color: #0066aa; word-break: break-all; }
+
+.rp-host-tag {
+  display: inline-block; margin: 0 4px 2px 0;
+  font-family: 'Courier New', monospace; font-size: 11.5px;
+  background: #f0f4ff; color: #1565c0;
+  padding: 1px 6px; border-radius: 3px; border: 1px solid #c5d8f0;
 }
 
-.rp-finding-badge {
-  padding: 2px 9px;
-  border-radius: 3px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  font-family: 'Arial', sans-serif;
-  letter-spacing: 0.5px;
+/* ═══════════════════════════════════════════
+   POST-EXPLOITATION / LOOT
+═══════════════════════════════════════════ */
+.rp-loot-group { margin-bottom: 24px; }
+.rp-loot-title {
+  font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
+  color: #333; text-transform: uppercase; letter-spacing: .06em;
+  margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid #ddd;
 }
-
-.rp-finding-desc { font-size: 13px; color: #333; margin: 0 0 8px; }
-.rp-finding-vector { font-size: 12px; color: #555; margin: 0 0 10px; }
-
-.rp-finding-vector code {
-  font-size: 11px;
-  background: #f5f5f5;
-  padding: 1px 4px;
-  border-radius: 2px;
-}
-
-.rp-finding-action { font-size: 13px; color: #333; }
-
-.rp-modules { margin: 6px 0 0 18px; padding: 0; }
-.rp-modules li { margin-bottom: 4px; font-size: 12px; }
-
-.rp-modules code {
-  background: #f5f5f5;
-  padding: 1px 5px;
-  border-radius: 2px;
-  font-size: 12px;
-}
-
-.rp-modules a { color: #0066aa; }
-
-/* ── Vuln scan output ── */
-.rp-pre {
-  background: #f8f8f8;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  padding: 16px;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-family: 'Courier New', monospace;
-  color: #222;
-}
-
-.rp-no-data {
-  color: #888;
-  font-style: italic;
-  font-family: 'Arial', sans-serif;
-  font-size: 13px;
-}
-
-/* ── Remarks ── */
-.rp-remarks-hint {
-  font-family: 'Arial', sans-serif;
-  font-size: 12px;
-  color: #777;
-  margin: 0 0 8px;
-}
-
-.rp-remarks-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  font-family: 'Arial', sans-serif;
-  font-size: 13px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  resize: vertical;
-  color: #111;
-  line-height: 1.6;
-  outline: none;
-}
-
-.rp-remarks-input:focus { border-color: #0066aa; }
-
-.rp-remarks-text {
-  font-family: 'Georgia', serif;
-  font-size: 14px;
-  white-space: pre-wrap;
-  color: #222;
-  line-height: 1.7;
-}
-
-/* ── Print/no-print visibility ── */
-.print-only { display: none; }
-
-/* ── Scan summary (dark sections) ── */
-.rp-scan-meta {
-  font-size: 12px;
-  margin-bottom: 14px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
-.rp-scan-approx { color: var(--text-dim); font-style: italic; }
-
-.rp-subsection-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 18px 0 8px;
-}
-
-.rp-state-open     { color: var(--green); font-weight: 600; }
-.rp-state-filtered { color: var(--red); }
-
-.rp-vuln-finding {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-base);
-  border-left: 3px solid var(--red);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  margin-bottom: 8px;
-}
-
-.rp-vuln-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-.rp-vuln-script {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--bg-raised);
-  padding: 2px 6px;
-  border-radius: 2px;
-  color: var(--cyan);
-}
-
-.rp-vuln-state {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 2px;
-}
-
-.rp-state-vuln   { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,56,96,0.3); }
-.rp-state-likely { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,179,0,0.3); }
-
-.rp-vuln-title { margin: 4px 0; font-size: 12px; color: var(--text-primary); }
-
-.rp-vuln-cves { margin: 4px 0; font-size: 11px; color: var(--text-secondary); }
-
-.rp-cve-tag {
-  display: inline-block;
-  margin: 0 4px 2px 0;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  background: var(--bg-raised);
-  color: var(--cyan);
-  padding: 1px 5px;
-  border-radius: 2px;
-  border: 1px solid var(--border-cyan);
-}
-
-.rp-vuln-meta { margin: 4px 0; font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
-.rp-finding-targets { margin: 4px 0 8px; font-size: 11px; color: var(--text-secondary); }
-
-/* ── Loot section ── */
-.rp-loot-group { margin-bottom: 22px; }
-
-.rp-loot-group-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--cyan);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-base);
-}
-
 .rp-loot-table { margin-bottom: 10px; }
-
-.rp-loot-source {
-  background: var(--bg-raised);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  text-align: left;
-  font-weight: normal;
-  padding: 4px 8px;
+.rp-loot-src {
+  background: #f5f5f5; font-family: Arial, sans-serif; font-size: 11px;
+  color: #555; text-align: left; font-weight: 600;
+  padding: 6px 10px; display: flex; justify-content: space-between;
 }
-
-.rp-loot-ts { color: var(--text-dim); font-size: 10px; }
-
+.rp-loot-ts { color: #999; font-size: 10.5px; font-weight: 400; }
 .rp-loot-key {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  width: 160px;
-  vertical-align: top;
+  font-family: 'Courier New', monospace; font-size: 11px; color: #444;
+  white-space: nowrap; width: 160px; vertical-align: top;
 }
-
-.rp-loot-val { vertical-align: top; }
-
 .rp-loot-pre {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: var(--text-primary);
+  margin: 0; font-family: 'Courier New', monospace; font-size: 11px;
+  white-space: pre-wrap; word-break: break-all; color: #222; line-height: 1.5;
 }
 
-/* ── Print media ── */
-@media print {
-  .no-print { display: none !important; }
-  .print-only { display: block; }
+/* ═══════════════════════════════════════════
+   NSE FINDINGS
+═══════════════════════════════════════════ */
+.rp-nse {
+  border: 1px solid #e0e0e0; border-left: 4px solid #b71c1c;
+  border-radius: 4px; padding: 12px 16px; margin-bottom: 10px;
+  background: #fff; page-break-inside: avoid;
+}
+.rp-nse-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.rp-nse-script {
+  font-family: 'Courier New', monospace; font-size: 11px;
+  background: #f5f5f5; color: #111; padding: 2px 6px; border-radius: 2px;
+}
+.rp-nse-state {
+  font-family: Arial, sans-serif; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 3px;
+}
+.rp-vuln   { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+.rp-likely { background: #fff8e1; color: #e65100; border: 1px solid #ffcc02; }
 
-  .rp-wrapper { background: white; }
+.rp-nse-title { font-size: 12.5px; color: #222; margin: 4px 0; }
+.rp-nse-cves  { font-size: 12px; color: #333; margin: 4px 0; }
+.rp-nse-meta  { font-size: 11px; color: #888; font-family: 'Courier New', monospace; margin: 4px 0; }
+.rp-cve-pill  {
+  display: inline-block; margin: 0 4px 2px 0;
+  font-family: 'Courier New', monospace; font-size: 10.5px;
+  background: #f5f5f5; color: #333; border: 1px solid #ddd;
+  padding: 1px 5px; border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════
+   REMARKS & DISCLAIMER
+═══════════════════════════════════════════ */
+.rp-remarks-hint { font-family: Arial, sans-serif; font-size: 12px; color: #888; margin: 0 0 8px; }
+.rp-remarks-input {
+  width: 100%; box-sizing: border-box; padding: 12px;
+  font-family: Arial, sans-serif; font-size: 13px;
+  border: 1px solid #ccc; border-radius: 4px; resize: vertical;
+  color: #111; line-height: 1.65; outline: none;
+}
+.rp-remarks-input:focus { border-color: #1565c0; }
+.rp-remarks-text { font-family: Georgia, serif; font-size: 13.5px; white-space: pre-wrap; color: #222; line-height: 1.7; }
+
+.rp-disclaimer {
+  margin: 48px 72px 48px;
+  padding: 14px 18px; background: #fafafa;
+  border: 1px solid #ddd; border-top: 3px solid #b71c1c;
+  font-family: Arial, sans-serif; font-size: 11px; color: #666;
+  line-height: 1.65; border-radius: 0 0 4px 4px;
+}
+
+/* ══════════════════════════════════════════════
+   PRINT MEDIA
+   All dark-theme CSS vars replaced with explicit
+   hex values. Tested against Chromium print.
+══════════════════════════════════════════════ */
+@media print {
+  .no-print    { display: none !important; }
+  .print-only  { display: block !important; }
+
+  .rp-wrapper  { background: #fff; }
 
   .rp-document {
-    max-width: none;
-    margin: 0;
-    padding: 20mm 18mm;
-    box-shadow: none;
-    font-size: 11pt;
+    max-width: none; margin: 0; border-radius: 0;
+    box-shadow: none; font-size: 10.5pt; overflow: visible;
   }
 
-  .rp-cover { page-break-after: always; }
-  .rp-section { page-break-inside: avoid; }
+  .rp-section { padding: 0 18mm; page-break-inside: avoid; }
+  .rp-cover   { page-break-after: always; }
   .rp-finding { page-break-inside: avoid; }
+  .rp-nse     { page-break-inside: avoid; }
 
-  .rp-pre { font-size: 8pt; white-space: pre-wrap; word-break: break-all; }
+  .rp-cover-inner  { padding: 30mm 18mm 20mm; }
+  .rp-cover-footer { padding: 10mm 18mm; }
+  .rp-disclaimer   { margin: 20mm 18mm 20mm; }
+
+  /* Section headings */
   .rp-section-title { font-size: 14pt; }
-  .rp-cover-title { font-size: 26pt; }
+  .rp-cover-title   { font-size: 22pt; }
 
-  a { color: #000; text-decoration: underline; }
+  /* Charts (SVG renders natively in print — no overrides needed) */
 
-  .rp-loot-group-title { color: #000; border-color: #ccc; }
-  .rp-loot-source { background: #f5f5f5; }
-  .rp-loot-pre { color: #000; }
+  /* KPI boxes */
+  .rp-kpi { background: #fff; }
+
+  /* Override any residual CSS-var colours */
+  .rp-state-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-sev-badge  { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-inline-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-gauge-fill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-cover-top-bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rp-phase-num  { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Loot */
+  .rp-loot-src  { background: #f5f5f5; color: #444; }
+  .rp-loot-pre  { color: #111; }
+  .rp-loot-key  { color: #333; }
+  .rp-loot-title { color: #111; border-color: #ccc; }
+
+  /* NSE */
+  .rp-nse-script { background: #f5f5f5; color: #111; }
+  .rp-vuln   { background: #fff0f0; color: #b71c1c; border-color: #b71c1c; }
+  .rp-likely { background: #fff8e0; color: #e65100; border-color: #f57c00; }
+
+  /* Links */
+  a { color: #0066aa; text-decoration: none; }
+
+  /* Footer */
+  .rp-page-footer { display: block !important; }
 }

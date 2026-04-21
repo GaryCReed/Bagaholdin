@@ -19,10 +19,29 @@ import (
 	"github.com/go-chi/httprate"
 )
 
+// baseDir returns the directory the binary lives in, falling back to CWD when
+// running under "go run" (where os.Args[0] is a temp path).
+func baseDir() string {
+	bin := os.Args[0]
+	dir := filepath.Dir(bin)
+	if strings.HasPrefix(dir, os.TempDir()) || dir == "." {
+		if wd, err := os.Getwd(); err == nil {
+			return wd
+		}
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return dir
+}
+
 func init() {
-	// Load .env file if it exists
-	if err := loadEnv(".env"); err != nil {
-		log.Printf("Warning: Could not load .env file: %v", err)
+	// Load .env from the same directory as the binary so it is found regardless
+	// of which directory the process is started from.
+	envPath := filepath.Join(baseDir(), ".env")
+	if err := loadEnv(envPath); err != nil {
+		// Fallback: try CWD (covers the common `go run .` case)
+		_ = loadEnv(".env")
 	}
 	// auth.go's init() ran before this (alphabetical order), so jwtSecret may
 	// have been set before .env was loaded.  Re-read now that .env is in the env.
@@ -32,20 +51,29 @@ func init() {
 }
 
 func main() {
-	// Load environment variables
+	base := baseDir()
+
+	// Determine database URL. Relative sqlite3:// paths are anchored to baseDir
+	// so the DB file always lands next to the binary regardless of CWD.
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgresql://postgres:@localhost:5432/msf_web?sslmode=disable"
+		dbURL = "sqlite3://msf_web.db"
+	}
+	if strings.HasPrefix(dbURL, "sqlite3://") {
+		rel := strings.TrimPrefix(dbURL, "sqlite3://")
+		if !filepath.IsAbs(rel) {
+			dbURL = "sqlite3://" + filepath.Join(base, rel)
+		}
 	}
 
 	log.Printf("Using DATABASE_URL: %s", dbURL)
 
-	// Initialize database, falling back to SQLite if PostgreSQL is unavailable.
+	// Initialize database.
 	db, err := NewDB(dbURL)
 	if err != nil {
-		log.Printf("Warning: could not connect to %s: %v", dbURL, err)
-		log.Println("Falling back to SQLite (msf_web.db) for persistent storage.")
-		db, err = NewDB("sqlite3://msf_web.db")
+		fallback := "sqlite3://" + filepath.Join(base, "msf_web.db")
+		log.Printf("Warning: could not open %s: %v — falling back to %s", dbURL, err, fallback)
+		db, err = NewDB(fallback)
 		if err != nil {
 			log.Fatalf("Failed to open SQLite fallback: %v", err)
 		}
