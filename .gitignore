@@ -3,6 +3,7 @@ backend/.env
 .env
 
 # Go build artifacts
+backend/bagaholdin
 backend/msf-server
 backend/msf-web
 backend/msf-web-interface

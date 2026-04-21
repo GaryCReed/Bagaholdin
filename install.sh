@@ -161,8 +161,8 @@ ok "Frontend ready to embed → backend/ui/"
 
 # ── 11. Build backend binary (embeds backend/ui/ into the binary) ─────────────
 info "Building backend binary…"
-(cd "$SCRIPT_DIR/backend" && go build -o msf-web .)
-ok "Backend binary → backend/msf-web (single binary, frontend embedded)"
+(cd "$SCRIPT_DIR/backend" && go build -o bagaholdin .)
+ok "Backend binary → backend/bagaholdin (single binary, frontend embedded)"
 
 # ── verify default Kali tools present ─────────────────────────────────────────
 echo ""
@@ -184,7 +184,7 @@ echo ""
 echo -e "${GREEN}────────────────────────────────────────────${NC}"
 echo -e "${GREEN}Installation complete.${NC}"
 echo ""
-echo "  Start the app:  cd backend && sudo ./msf-web"
+echo "  Start the app:  cd backend && sudo ./bagaholdin"
 echo ""
 echo "  Default listen: http://localhost:8080"
 echo -e "${GREEN}────────────────────────────────────────────${NC}"
