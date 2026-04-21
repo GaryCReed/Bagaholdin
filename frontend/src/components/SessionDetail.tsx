@@ -840,12 +840,14 @@ export function MsfvenomPanel({ sessionId }: { sessionId: number }) {
   const [encoder,      setEncoder]      = useState('');
   const [badChars,     setBadChars]     = useState('');
   const [iterations,   setIterations]   = useState('1');
-  const [msfSessId,    setMsfSessId]    = useState('1');
-  const [remotePath,   setRemotePath]   = useState('C:\\Windows\\Temp\\payload.exe');
-  const [genLoading,   setGenLoading]   = useState(false);
-  const [upLoading,    setUpLoading]    = useState(false);
-  const [output,       setOutput]       = useState('');
-  const [error,        setError]        = useState('');
+  const [msfSessId,      setMsfSessId]      = useState('1');
+  const [remotePath,     setRemotePath]     = useState('C:\\Windows\\Temp\\payload.exe');
+  const [pathPreset,     setPathPreset]     = useState('temp');
+  const [presetLoading,  setPresetLoading]  = useState(false);
+  const [genLoading,     setGenLoading]     = useState(false);
+  const [upLoading,      setUpLoading]      = useState(false);
+  const [output,         setOutput]         = useState('');
+  const [error,          setError]          = useState('');
 
   useEffect(() => {
     axios.get('/api/network')
@@ -895,6 +897,28 @@ export function MsfvenomPanel({ sessionId }: { sessionId: number }) {
     } catch (err: any) {
       setError(err.response?.data?.error || err.message);
     } finally { setUpLoading(false); }
+  };
+
+  const isWindowsFormat = ['exe', 'dll', 'ps1'].includes(format);
+
+  const handlePathPresetChange = async (preset: string) => {
+    setPathPreset(preset);
+    const filename = format === 'dll' ? 'payload.dll' : format === 'ps1' ? 'payload.ps1' : 'payload.exe';
+    if (preset === 'temp') {
+      setRemotePath(`C:\\Windows\\Temp\\${filename}`);
+    } else if (preset === 'startup') {
+      setPresetLoading(true);
+      try {
+        const res = await axios.post(`/api/sessions/${sessionId}/msfvenom/winusername`, {
+          msf_session_id: msfSessId,
+        });
+        const username = res.data.username;
+        setRemotePath(`C:\\Users\\${username}\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\${filename}`);
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Could not fetch USERNAME from session');
+        setPathPreset('custom');
+      } finally { setPresetLoading(false); }
+    }
   };
 
   return (
@@ -969,9 +993,21 @@ export function MsfvenomPanel({ sessionId }: { sessionId: number }) {
           <label className="msf-venom-label">MSF Session #</label>
           <input className="msf-venom-input" value={msfSessId} onChange={e => setMsfSessId(e.target.value)} placeholder="1" />
         </div>
-        <div>
-          <label className="msf-venom-label">Remote Path</label>
-          <input className="msf-venom-input" value={remotePath} onChange={e => setRemotePath(e.target.value)} placeholder="/tmp/payload" />
+        {isWindowsFormat && (
+          <div>
+            <label className="msf-venom-label">Path Preset</label>
+            <select className="msf-venom-select" value={pathPreset} onChange={e => handlePathPresetChange(e.target.value)} disabled={presetLoading}>
+              <option value="temp">Windows Temp</option>
+              <option value="startup">Startup (current user)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+        )}
+        <div className={isWindowsFormat ? 'msf-venom-col-full' : ''}>
+          <label className="msf-venom-label">
+            Remote Path{presetLoading && <span style={{color:'#888',marginLeft:6}}>fetching username…</span>}
+          </label>
+          <input className="msf-venom-input" value={remotePath} onChange={e => { setRemotePath(e.target.value); setPathPreset('custom'); }} placeholder="/tmp/payload" />
         </div>
       </div>
 

@@ -146,6 +146,7 @@ func main() {
 		// Msfvenom payload generator
 		r.Post("/sessions/{id}/msfvenom", handleMsfvenomGenerate(db))
 		r.Post("/sessions/{id}/msfvenom/upload", handleMsfvenomUpload(db))
+		r.Post("/sessions/{id}/msfvenom/winusername", handleMsfvenomGetWinUsername(db))
 		// Tools
 		r.Post("/wifi/reset", handleResetWifiAdapters())
 	})
