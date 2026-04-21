@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -270,8 +271,18 @@ func handleMsfvenomUpload(db *DB) http.HandlerFunc {
 			}
 		}
 
-		output := strings.Join(lines, "\n")
-		fmt.Fprintf(w, `{"output":%q,"local_path":%q,"remote_path":%q}`,
-			output, tmpFile, body.RemotePath)
+		type uploadResp struct {
+			Output     string `json:"output"`
+			LocalPath  string `json:"local_path"`
+			RemotePath string `json:"remote_path"`
+		}
+		resp := uploadResp{
+			Output:     strings.Join(lines, "\n"),
+			LocalPath:  tmpFile,
+			RemotePath: body.RemotePath,
+		}
+		if data, err := json.Marshal(resp); err == nil {
+			w.Write(data)
+		}
 	}
 }

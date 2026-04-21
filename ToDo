@@ -13,19 +13,13 @@ cd ~/Documents/GitHub/Msf-Web-Interface/backend && go run .
 ?? Diagramatic of the project network, 
 inlcuding colour coding for compromised hosts.
 
-extract WPA/WPA2 handshakes from .pcap or .pcapng capture files and convert them into Hashcat-compatible .22000 files and Aircrack-ng .hccap files for password cracking.
+msfvenom
 
-!!!! Within the shells panel, the list of sessions needs to persist when moving
-away from that tab or page
-
-Include option for URL in Bruteforce, default to current targeted host ip if already assigned
-
-sudo -l
-sudo: a terminal is required to read the password; either use the -S option to read from standard input
-or reconfigure as an askpass helper 
-
-sudo: a password is required
-
+Wrong number of arguments expected: 1, received: 4
+Usage: sessions <id>
+Interact with a different session Id.
+This command only accepts one positive numeric argument.
+This works the same as calling this from the MSF shell: sessions -i <session id>
 
 I want to incorporate Linpeas and PEASS to be runnable dependent on OS detected,
 the results from these scans are filtered for useful information to include in the report
