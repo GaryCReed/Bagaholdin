@@ -126,6 +126,8 @@ func main() {
 		r.Get("/sessions/{id}/vuln-scan", handleGetVulnScan(db))
 		r.Post("/sessions/{id}/enumerate", handleEnumerate(db))
 		r.Post("/sessions/{id}/cve-analysis", handleCVEAnalysis(db))
+		r.Get("/sessions/{id}/cve-results", handleGetCVEResults(db))
+		r.Post("/sessions/{id}/cve-results", handleSaveCVEResults(db))
 		r.Post("/sessions/{id}/shell", handleShellCommand(db))
 		r.Get("/sessions/{id}/msf-sessions", handleListMsfSessions(db))
 		r.Post("/sessions/{id}/loot", handleSaveLoot(db))
@@ -679,6 +681,67 @@ func handleCVEAnalysis(db *DB) http.HandlerFunc {
 
 		data, _ := encodeJSON(results)
 		fmt.Fprintf(w, `{"cves":%s,"target":%q}`, data, target)
+	}
+}
+
+func handleGetCVEResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		if _, err := validateToken(extractToken(r)); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		data, err := db.GetCVEResults(sessionID)
+		if err != nil {
+			// No stored results yet — return empty payload
+			fmt.Fprint(w, `{"results":null}`)
+			return
+		}
+		fmt.Fprintf(w, `{"results":%s}`, data)
+	}
+}
+
+func handleSaveCVEResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		// Verify the session belongs to this user
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+		// Read raw body — it's already a JSON array of CVE results
+		body := make([]byte, r.ContentLength)
+		if _, err := r.Body.Read(body); err != nil && r.ContentLength > 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"failed to read body"}`)
+			return
+		}
+		if err := db.SaveCVEResults(sessionID, string(body)); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"failed to save: %s"}`, err.Error())
+			return
+		}
+		fmt.Fprint(w, `{"ok":true}`)
 	}
 }
 

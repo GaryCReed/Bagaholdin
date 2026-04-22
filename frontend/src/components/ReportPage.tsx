@@ -199,15 +199,27 @@ export default function ReportPage() {
       .catch(() => applyStorageVuln(sessionId))
       .finally(() => setPending(p => p - 1));
 
-    // CVE results only exist in localStorage (no backend store)
-    try {
-      const raw = localStorage.getItem(`session-${sessionId}-cve`);
-      if (raw) {
-        const { results, target } = JSON.parse(raw);
-        setCveResults(results || []);
-        setCveTarget(target || '');
-      }
-    } catch {}
+    // CVE results: backend is authoritative, localStorage is fallback
+    axios.get(`/api/sessions/${sessionId}/cve-results`)
+      .then(r => {
+        const results: CVEResult[] | null = r.data.results;
+        if (results && results.length > 0) {
+          setCveResults(results);
+          if (results[0]?.targets?.[0]) setCveTarget(results[0].targets[0]);
+        } else {
+          // Fall back to localStorage
+          try {
+            const raw = localStorage.getItem(`session-${sessionId}-cve`);
+            if (raw) { const { results: lr, target } = JSON.parse(raw); setCveResults(lr || []); setCveTarget(target || ''); }
+          } catch {}
+        }
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(`session-${sessionId}-cve`);
+          if (raw) { const { results, target } = JSON.parse(raw); setCveResults(results || []); setCveTarget(target || ''); }
+        } catch {}
+      });
 
     // Remarks
     const savedRemarks = localStorage.getItem(`session-${sessionId}-remarks`);

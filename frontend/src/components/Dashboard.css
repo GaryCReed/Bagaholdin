@@ -397,3 +397,29 @@
 .host-status-dot.online { background: var(--green); box-shadow: var(--glow-green); }
 
 /* Remaining host-item styles inherited from base via cascade */
+
+/* ── Project report button ─────────────────────────────────────────────── */
+
+.project-report-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 16px;
+}
+
+.btn-project-report {
+  padding: 9px 22px;
+  background: transparent;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-project-report:hover {
+  background: var(--cyan);
+  color: #0a0e1a;
+}

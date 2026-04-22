@@ -310,6 +310,16 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
           )}
         </section>
 
+        {/* ── Project report button ── */}
+        <div className="project-report-bar">
+          <button
+            className="btn-project-report"
+            onClick={() => window.open(`/project-report/${project.id}`, '_blank')}
+          >
+            Generate Project Report
+          </button>
+        </div>
+
         {/* ── Sessions panel ── */}
         <section className="sessions-panel">
           <div className="panel-heading">

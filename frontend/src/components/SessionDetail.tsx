@@ -1203,13 +1203,77 @@ const ATTACK_MODES = [
   { value: 7, label: '7 — Hybrid: Mask + Wordlist' },
 ];
 
-const COMMON_MASKS = [
-  { label: '8 digits',         mask: '?d?d?d?d?d?d?d?d' },
-  { label: '8 lowercase',      mask: '?l?l?l?l?l?l?l?l' },
-  { label: '8 mixed+digit',    mask: '?u?l?l?l?l?l?d?d' },
-  { label: '10 digits',        mask: '?d?d?d?d?d?d?d?d?d?d' },
-  { label: '8 any char',       mask: '?a?a?a?a?a?a?a?a' },
-  { label: 'Phone (07XXXXXXXX)', mask: '07?d?d?d?d?d?d?d?d' },
+interface WifiMaskEntry {
+  label: string;
+  mask: string;
+  customArgs?: string;  // charset flags e.g. "-1 23456789abcdef"
+  note?: string;
+}
+interface WifiMaskGroup { group: string; entries: WifiMaskEntry[] }
+
+const WIFI_MASK_GROUPS: WifiMaskGroup[] = [
+  { group: 'Digits only (0-9)', entries: [
+    { label: '2WIRE / ATT / DJAWEB / Frontier / INFINITUM / ONO  [10 digits]',   mask: '?d?d?d?d?d?d?d?d?d?d' },
+    { label: 'Verizon MiFi / VirginMobile MiFi  [11 digits]',                    mask: '?d?d?d?d?d?d?d?d?d?d?d' },
+    { label: 'E583x / Linkem / MobileWifi / TIM_PN51T / UNITE  [7 digits]',      mask: '?d?d?d?d?d?d?d',          note: '7 variable digit positions per manufacturer spec' },
+    { label: 'FRITZ!Box Fon WLAN  [16 digits]',                                  mask: '?d?d?d?d?d?d?d?d?d?d?d?d?d?d?d?d' },
+    { label: 'MYWIFI (EE)  [MYWIFI + 4 digits]',                                 mask: 'MYWIFI?d?d?d?d',           note: 'Fixed prefix MYWIFI, 4 random digits appended' },
+  ]},
+  { group: 'Uppercase Hex (0-9 A-F)', entries: [
+    { label: 'Belkin / Domino / E583x-xxxxx / Sitecom / TP-LINK  [8 chars]',     mask: '?H?H?H?H?H?H?H?H' },
+    { label: 'EasyBox-######  [9 chars]',                                         mask: '?H?H?H?H?H?H?H?H?H' },
+    { label: 'BigPond / PlusnetWireless / Technicolor / Telstra / Thomson / TNCAP  [10 chars]', mask: '?H?H?H?H?H?H?H?H?H?H' },
+    { label: 'WLAN1-XXXXXX  [11 chars]',                                          mask: '?H?H?H?H?H?H?H?H?H?H?H' },
+    { label: 'Orange-AA0A00  [12 chars]',                                         mask: '?H?H?H?H?H?H?H?H?H?H?H?H' },
+  ]},
+  { group: 'Lowercase Hex (0-9 a-f)', entries: [
+    { label: 'Orange-0a0aa0  [8 chars]',                                          mask: '?h?h?h?h?h?h?h?h' },
+    { label: 'TDC-####  [9 chars]',                                               mask: '?h?h?h?h?h?h?h?h?h' },
+    { label: 'BTHomeHub1 / PLUSNET / SpeedTouch / TELUS / ThomsonXXXXXX  [10 chars]', mask: '?h?h?h?h?h?h?h?h?h?h' },
+    { label: 'Netia-XXXXXX  [13 chars]',                                          mask: '?h?h?h?h?h?h?h?h?h?h?h?h?h' },
+    { label: 'CenturyLink  [14 chars]',                                           mask: '?h?h?h?h?h?h?h?h?h?h?h?h?h?h' },
+    { label: 'Cisco  [26 chars]',                                                 mask: '?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h?h' },
+  ]},
+  { group: 'Reduced Hex 2–9+a–f (BT Hub / belkin.xxx)', entries: [
+    { label: 'belkin.xxx  [8 chars, 2-9 a-f]',                                   mask: '?1?1?1?1?1?1?1?1',          customArgs: '-1 23456789abcdef', note: 'Excludes digits 0 and 1' },
+    { label: 'BTHomeHub2 / BTHub3 / BTHub4 / BTHub5  [10 chars, 2-9 a-f]',       mask: '?1?1?1?1?1?1?1?1?1?1',      customArgs: '-1 23456789abcdef', note: 'Excludes digits 0 and 1' },
+  ]},
+  { group: 'Uppercase Alpha only (A-Z)', entries: [
+    { label: 'SKYXXXXX / Tech_XXXXXXXX / UPCXXXXXXX  [8 chars, A-Z]',             mask: '?u?u?u?u?u?u?u?u' },
+  ]},
+  { group: 'Upper Alphanumeric (0-9 A-Z)', entries: [
+    { label: 'AOLBB / Digicom_XXXX  [8 chars, 0-9 A-Z]',                         mask: '?1?1?1?1?1?1?1?1',          customArgs: '-1 ?u?d' },
+    { label: 'ATTxxxx 0000  [10 chars, 0-9 A-Z]',                                mask: '?1?1?1?1?1?1?1?1?1?1',      customArgs: '-1 ?u?d' },
+    { label: 'Hitron  [12 chars, 0-9 A-Z]',                                      mask: '?1?1?1?1?1?1?1?1?1?1?1?1',  customArgs: '-1 ?u?d' },
+    { label: 'mifi2 / ZyXELXXXXXX  [13 chars, 0-9 A-Z]',                        mask: '?1?1?1?1?1?1?1?1?1?1?1?1?1', customArgs: '-1 ?u?d' },
+  ]},
+  { group: 'Lower Alphanumeric (0-9 a-z)', entries: [
+    { label: '3MobileWiFi  [8 chars, 0-9 a-z]',                                  mask: '?1?1?1?1?1?1?1?1',                            customArgs: '-1 ?l?d' },
+    { label: 'Vodaphone_XXXXXXXX  [15 chars, 0-9 a-z]',                          mask: '?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1',             customArgs: '-1 ?l?d' },
+    { label: 'Alice_XXXXXXXX  [24 chars, 0-9 a-z]',                              mask: '?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1?1', customArgs: '-1 ?l?d', note: 'Enormous keyspace — not practical for brute-force' },
+  ]},
+  { group: 'Full Alphanumeric (0-9 a-z A-Z)', entries: [
+    { label: 'Keenetic-XXXX  [8 chars, 0-9 a-z A-Z]',                            mask: '?1?1?1?1?1?1?1?1',          customArgs: '-1 ?l?u?d' },
+    { label: 'EasyBox 904 LTE  [9 chars, 0-9 a-z A-Z]',                          mask: '?1?1?1?1?1?1?1?1?1',        customArgs: '-1 ?l?u?d' },
+    { label: 'BTHub6  [10 chars, 0-9 a-z A-Z]',                                  mask: '?1?1?1?1?1?1?1?1?1?1',      customArgs: '-1 ?l?u?d' },
+    { label: 'BTHub6 / VMXXXXXXX  [12 chars, 0-9 a-z A-Z]',                      mask: '?1?1?1?1?1?1?1?1?1?1?1?1',  customArgs: '-1 ?l?u?d' },
+  ]},
+  { group: 'Special ISP Charsets', entries: [
+    { label: 'Orange-XXXX  [8 chars, digits 2345679 + letters ACEF]',            mask: '?1?1?1?1?1?1?1?1',  customArgs: '-1 2345679ACEF',              note: 'Digits 2,3,4,5,6,7,9 only; uppercase A,C,E,F only' },
+    { label: 'TALKTALK-XXXXXX  [8 chars, 346789 + A-Z excl. ILOSZ]',             mask: '?1?1?1?1?1?1?1?1',  customArgs: '-1 346789ABCDEFGHJKMNPQRTUVWXY', note: 'Digits 3,4,6,7,8,9; A-Z excluding I,L,O,S,Z' },
+    { label: 'virginmedia / VMXXXXXXX-2G/5G  [8 chars, a-z excl. i,o,l]',        mask: '?1?1?1?1?1?1?1?1',  customArgs: '-1 abcdefghjkmnpqrstuvwxyz',   note: 'Lowercase a-z excluding i, l, o' },
+    { label: '3Wireless-Modem-XXXX  [8 chars, 0-9 A-F, first 4 = SSID digits]',  mask: '?H?H?H?H?H?H?H?H',                                              note: 'Tip: replace first 4 ?H with SSID digits for 4-char mask' },
+    { label: 'TP-LINK_######  [7 digits, 0-9 — alternate model format]',         mask: '?d?d?d?d?d?d?d',                                                  note: 'Some TP-LINK models use 7-digit numeric password' },
+  ]},
+  { group: 'Generic', entries: [
+    { label: '8 digits',              mask: '?d?d?d?d?d?d?d?d' },
+    { label: '8 lowercase',           mask: '?l?l?l?l?l?l?l?l' },
+    { label: '8 uppercase',           mask: '?u?u?u?u?u?u?u?u' },
+    { label: '8 mixed + digits',      mask: '?u?l?l?l?l?l?d?d' },
+    { label: '10 digits',             mask: '?d?d?d?d?d?d?d?d?d?d' },
+    { label: '8 any printable',       mask: '?a?a?a?a?a?a?a?a' },
+    { label: 'Phone (07XXXXXXXX)',    mask: '07?d?d?d?d?d?d?d?d' },
+  ]},
 ];
 
 export function HashcatPanel({ sessionId }: { sessionId: number }) {
@@ -1491,17 +1555,32 @@ export function HashcatPanel({ sessionId }: { sessionId: number }) {
         {needsMask && (
           <div className="bf-cred-col" style={{ marginTop: 8 }}>
             <label className="bf-label">Mask</label>
-            <div className="bf-row" style={{ flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
-              {COMMON_MASKS.map(m => (
-                <button key={m.mask} className="hc-mask-pill"
-                  onClick={() => setMask(m.mask)} title={m.mask}>
-                  {m.label}
-                </button>
+            <select className="bf-select" style={{ marginBottom: 5 }}
+              defaultValue=""
+              onChange={e => {
+                const key = e.target.value;
+                if (!key) return;
+                const [gi, ei] = key.split(':').map(Number);
+                const entry = WIFI_MASK_GROUPS[gi]?.entries[ei];
+                if (!entry) return;
+                setMask(entry.mask);
+                setCustomArgs(entry.customArgs || '');
+              }}>
+              <option value="">— ISP / WiFi mask presets —</option>
+              {WIFI_MASK_GROUPS.map((grp, gi) => (
+                <optgroup key={grp.group} label={grp.group}>
+                  {grp.entries.map((m, ei) => (
+                    <option key={`${gi}:${ei}`} value={`${gi}:${ei}`}
+                      title={m.note || m.mask}>
+                      {m.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
-            </div>
+            </select>
             <input className="bf-text-input" placeholder="e.g. ?d?d?d?d?d?d?d?d"
               value={mask} onChange={e => setMask(e.target.value)} />
-            <div className="hc-mask-hint">?l=lower ?u=upper ?d=digit ?s=symbol ?a=all</div>
+            <div className="hc-mask-hint">?l=lower ?u=upper ?d=digit ?h=lower-hex ?H=upper-hex ?1=custom-charset-1</div>
           </div>
         )}
       </div>
@@ -3290,18 +3369,48 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
     const savedVuln = localStorage.getItem(`session-${sessionId}-vuln`);
     if (savedVuln) setVulnOutput(savedVuln);
 
-    const savedCve = localStorage.getItem(`session-${sessionId}-cve`);
-    if (savedCve) {
-      try {
-        const { results, target, analysed } = JSON.parse(savedCve);
-        const restored: CVEResult[] = (results || []).map((r: CVEResult) => ({
-          ...r, metricsLoading: false, githubLoading: false,
-        }));
-        setCveResults(restored);
-        setCveTarget(target || '');
-        setCveAnalysed(analysed || false);
-      } catch { /* ignore corrupt cache */ }
-    }
+    // CVE results: try backend first (persistent), fall back to localStorage
+    axios.get(`/api/sessions/${sessionId}/cve-results`)
+      .then(res => {
+        const results: CVEResult[] | null = res.data.results;
+        if (results && results.length > 0) {
+          setCveResults(results.map((r: CVEResult) => ({
+            ...r, metricsLoading: false, githubLoading: false,
+          })));
+          setCveAnalysed(true);
+          // Sync to localStorage so report page can read it quickly
+          localStorage.setItem(`session-${sessionId}-cve`, JSON.stringify({
+            results, target: results[0]?.targets?.[0] || '', analysed: true,
+          }));
+        } else {
+          // Fall back to localStorage (e.g. data from before this feature)
+          const savedCve = localStorage.getItem(`session-${sessionId}-cve`);
+          if (savedCve) {
+            try {
+              const { results: lr, target, analysed } = JSON.parse(savedCve);
+              if (lr?.length > 0) {
+                setCveResults(lr.map((r: CVEResult) => ({ ...r, metricsLoading: false, githubLoading: false })));
+                setCveTarget(target || '');
+                setCveAnalysed(analysed || false);
+              }
+            } catch {}
+          }
+        }
+      })
+      .catch(() => {
+        // Backend unavailable — use localStorage
+        const savedCve = localStorage.getItem(`session-${sessionId}-cve`);
+        if (savedCve) {
+          try {
+            const { results, target, analysed } = JSON.parse(savedCve);
+            if (results?.length > 0) {
+              setCveResults(results.map((r: CVEResult) => ({ ...r, metricsLoading: false, githubLoading: false })));
+              setCveTarget(target || '');
+              setCveAnalysed(analysed || false);
+            }
+          } catch {}
+        }
+      });
 
     const savedEnum = localStorage.getItem(`session-${sessionId}-enum`);
     if (savedEnum) {
@@ -3341,15 +3450,24 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
       localStorage.setItem(`session-${sessionId}-msf-sessions`, JSON.stringify(msfSessions));
   }, [msfSessions, sessionId]);
 
-  // Persist CVE state when settled
+  // Persist CVE results to backend (and localStorage) whenever the list changes
+  // and at least one entry is fully enriched (not still loading).
   useEffect(() => {
-    if (!sessionId || cveLoading) return;
-    if (cveResults.some(r => r.metricsLoading || r.githubLoading)) return;
-    if (cveResults.length > 0 || cveAnalysed) {
-      localStorage.setItem(`session-${sessionId}-cve`, JSON.stringify({
-        results: cveResults, target: cveTarget, analysed: cveAnalysed,
-      }));
-    }
+    if (!sessionId || cveLoading || cveResults.length === 0) return;
+    // Save results that are settled — still save even if some are still loading
+    // so that navigating away mid-analysis preserves what completed so far.
+    const settled = cveResults.filter(r => !r.metricsLoading && !r.githubLoading);
+    if (settled.length === 0) return;
+
+    const payload = JSON.stringify(cveResults);
+    // Backend (authoritative)
+    axios.post(`/api/sessions/${sessionId}/cve-results`, payload, {
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {}); // best-effort
+    // localStorage (fast local cache for report page)
+    localStorage.setItem(`session-${sessionId}-cve`, JSON.stringify({
+      results: cveResults, target: cveTarget, analysed: cveAnalysed,
+    }));
   }, [cveResults, cveTarget, cveAnalysed, cveLoading, sessionId]);
 
   // Abort CVE NVD fetches when leaving CVE panel

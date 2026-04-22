@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import SessionDetail from './components/SessionDetail';
 import ReportPage from './components/ReportPage';
+import ProjectReportPage from './components/ProjectReportPage';
 
 interface AppProps {}
 
@@ -64,6 +65,7 @@ function App(_: AppProps) {
             <Route path="/project/:id" element={<ProjectView onLogout={handleLogout} />} />
             <Route path="/session/:id" element={<SessionDetail onLogout={handleLogout} />} />
             <Route path="/report/:id" element={<ReportPage />} />
+            <Route path="/project-report/:id" element={<ProjectReportPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         ) : (
