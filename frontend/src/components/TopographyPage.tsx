@@ -165,7 +165,20 @@ export default function TopographyPage() {
       });
 
       setNodes(sorted);
-      setDragPos(new Map()); // reset overrides when nodes reload
+
+      // Restore any previously saved drag positions for this project
+      try {
+        const saved = localStorage.getItem(`topology-${projectId}-pos`);
+        if (saved) {
+          const parsed = JSON.parse(saved) as Record<string, Pos>;
+          setDragPos(new Map(Object.entries(parsed)));
+        } else {
+          setDragPos(new Map());
+        }
+      } catch {
+        setDragPos(new Map());
+      }
+
       setPending(0);
     }).catch(err => {
       setLoadErr(err.response?.data?.error || err.message || 'Failed to load topology');
@@ -197,6 +210,14 @@ export default function TopographyPage() {
       document.removeEventListener('mouseup', onUp);
     };
   }, []);
+
+  // Persist drag positions to localStorage whenever they change
+  useEffect(() => {
+    if (!projectId || nodes.length === 0) return;
+    const obj: Record<string, Pos> = {};
+    dragPos.forEach((pos, ip) => { obj[ip] = pos; });
+    localStorage.setItem(`topology-${projectId}-pos`, JSON.stringify(obj));
+  }, [dragPos, projectId, nodes.length]);
 
   const handleNodeMouseDown = (e: React.MouseEvent, ip: string, curPos: Pos) => {
     e.preventDefault();
