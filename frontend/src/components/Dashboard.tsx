@@ -219,6 +219,8 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
       </header>
 
       <div className="dashboard-body">
+        {/* ── Right column: scanner + project report ── */}
+        <div className="right-column">
         {/* ── Network scanner panel ── */}
         <section className="scanner-panel">
           <div className="panel-heading">
@@ -310,15 +312,19 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
           )}
         </section>
 
-        {/* ── Project report button ── */}
-        <div className="project-report-bar">
-          <button
-            className="btn-project-report"
-            onClick={() => window.open(`/project-report/${project.id}`, '_blank')}
-          >
-            Generate Project Report
-          </button>
-        </div>
+        {/* ── Project report ── */}
+        <section className="report-panel">
+          <div className="panel-heading">
+            <h2>Project Report</h2>
+            <button
+              className="btn-primary"
+              onClick={() => window.open(`/project-report/${project.id}`, '_blank')}
+            >
+              Generate Report
+            </button>
+          </div>
+        </section>
+        </div>{/* end right-column */}
 
         {/* ── Sessions panel ── */}
         <section className="sessions-panel">
