@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import './TopographyPage.css';
@@ -24,6 +24,8 @@ interface HostNode {
   cveResults: CVEResult[];
   worstSev: string;
 }
+
+interface Pos { x: number; y: number }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,12 +56,12 @@ function gatewayIP(range: string): string {
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
-const NW = 176;   // node width
-const NH = 118;   // node height
-const CG = 28;    // column gap
-const RG = 80;    // row gap
-const GW = 200;   // gateway width
-const GH = 84;    // gateway height
+const NW = 176;
+const NH = 118;
+const CG = 28;
+const RG = 80;
+const GW = 200;
+const GH = 84;
 const PAD_TOP  = 36;
 const HOST_Y   = PAD_TOP + GH + 108;
 const MIN_W    = 600;
@@ -75,6 +77,15 @@ export default function TopographyPage() {
   const [nodes,   setNodes]   = useState<HostNode[]>([]);
   const [pending, setPending] = useState(1);
   const [loadErr, setLoadErr] = useState('');
+
+  // Drag state
+  const [dragPos, setDragPos] = useState<Map<string, Pos>>(new Map());
+  const dragRef = useRef<{
+    ip: string; startMX: number; startMY: number; startNX: number; startNY: number;
+  } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+
+  // ── Data loading ────────────────────────────────────────────────────────────
 
   const fetchSessionData = useCallback(async (s: SessionRef) => {
     const [scanR, cveR] = await Promise.allSettled([
@@ -106,17 +117,15 @@ export default function TopographyPage() {
       axios.get(`/api/projects/${projectId}/sessions`),
     ]).then(async ([projR, hostsR, sessR]) => {
       setProject(projR.data.project);
-      const phosts: ProjHost[]   = hostsR.data.hosts    || [];
-      const sessions: SessionRef[] = sessR.data.sessions || [];
+      const phosts: ProjHost[]     = hostsR.data.hosts    || [];
+      const sessions: SessionRef[] = sessR.data.sessions  || [];
 
       const sessionByIP = new Map<string, SessionRef>(sessions.map(s => [s.target_host, s]));
 
-      // Exclude the inferred gateway IP so it doesn't appear as a host node
       const gwIP = projR.data.project?.network_range
         ? gatewayIP(projR.data.project.network_range) : '';
 
-      // Merge discovered hosts + any session hosts not yet in project_hosts
-      const seen = new Set(phosts.map(h => h.ip));
+      const seen   = new Set(phosts.map(h => h.ip));
       const merged = phosts.filter(h => h.ip !== gwIP) as ProjHost[];
       for (const s of sessions) {
         if (!seen.has(s.target_host) && s.target_host !== gwIP)
@@ -156,6 +165,7 @@ export default function TopographyPage() {
       });
 
       setNodes(sorted);
+      setDragPos(new Map()); // reset overrides when nodes reload
       setPending(0);
     }).catch(err => {
       setLoadErr(err.response?.data?.error || err.message || 'Failed to load topology');
@@ -163,26 +173,83 @@ export default function TopographyPage() {
     });
   }, [projectId, fetchSessionData]);
 
-  // ── Layout calc ────────────────────────────────────────────────────────────
+  // ── Drag handlers ──────────────────────────────────────────────────────────
 
-  const cols   = nodes.length <= 3 ? nodes.length : Math.min(6, Math.ceil(Math.sqrt(nodes.length * 1.6)));
-  const rows   = Math.ceil(Math.max(1, nodes.length) / Math.max(1, cols));
-  const gridW  = cols * NW + Math.max(0, cols - 1) * CG;
-  const totalW = Math.max(MIN_W, gridW + SIDE_PAD * 2);
-  const totalH = HOST_Y + rows * NH + Math.max(0, rows - 1) * RG + 60;
-  const cx     = totalW / 2;
+  // Register global move/up handlers once — they read/write dragRef which is always current.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const { ip, startMX, startMY, startNX, startNY } = dragRef.current;
+      setDragPos(prev => {
+        const next = new Map(prev);
+        next.set(ip, { x: startNX + e.clientX - startMX, y: startNY + e.clientY - startMY });
+        return next;
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(null);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
-  const gwX  = cx - GW / 2;
-  const gwCY = PAD_TOP + GH / 2;
-  const hostStartX = cx - gridW / 2;
+  const handleNodeMouseDown = (e: React.MouseEvent, ip: string, curPos: Pos) => {
+    e.preventDefault();
+    dragRef.current = { ip, startMX: e.clientX, startMY: e.clientY, startNX: curPos.x, startNY: curPos.y };
+    setDragging(ip);
+  };
 
-  const positions = nodes.map((_, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x   = hostStartX + col * (NW + CG);
-    const y   = HOST_Y + row * (NH + RG);
-    return { x, y, cx: x + NW / 2, cy: y + NH / 2, topY: y };
-  });
+  // ── Layout ────────────────────────────────────────────────────────────────
+
+  const layout = useMemo(() => {
+    const n    = nodes.length;
+    const cols = n <= 3 ? n : Math.min(6, Math.ceil(Math.sqrt(n * 1.6)));
+    const rows = Math.ceil(Math.max(1, n) / Math.max(1, cols));
+    const gridW = cols * NW + Math.max(0, cols - 1) * CG;
+    const totalW = Math.max(MIN_W, gridW + SIDE_PAD * 2);
+    const cx = totalW / 2;
+    const gwX = cx - GW / 2;
+    const gwCY = PAD_TOP + GH / 2;
+    const hostStartX = cx - gridW / 2;
+    const baseH = HOST_Y + rows * NH + Math.max(0, rows - 1) * RG + 60;
+
+    const initPos = new Map<string, Pos>(nodes.map((node, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return [node.ip, {
+        x: hostStartX + col * (NW + CG),
+        y: HOST_Y + row * (NH + RG),
+      }];
+    }));
+
+    return { cols, rows, gridW, totalW, baseH, cx, gwX, gwCY, hostStartX, initPos };
+  }, [nodes]);
+
+  // Effective position per node: drag override first, then initial grid position
+  const effPos = useMemo<Map<string, Pos>>(() => {
+    return new Map(nodes.map(n => [
+      n.ip,
+      dragPos.get(n.ip) ?? layout.initPos.get(n.ip) ?? { x: 0, y: 0 },
+    ]));
+  }, [nodes, dragPos, layout.initPos]);
+
+  // Canvas dimensions: grow to contain any dragged nodes
+  const canvasW = useMemo(() => {
+    let w = layout.totalW;
+    for (const p of effPos.values()) w = Math.max(w, p.x + NW + SIDE_PAD);
+    return w;
+  }, [effPos, layout.totalW]);
+
+  const canvasH = useMemo(() => {
+    let h = layout.baseH;
+    for (const p of effPos.values()) h = Math.max(h, p.y + NH + 60);
+    return h;
+  }, [effPos, layout.baseH]);
 
   // ── Guards ─────────────────────────────────────────────────────────────────
 
@@ -192,9 +259,10 @@ export default function TopographyPage() {
   if (loadErr) return <div className="topo-loading topo-err">{loadErr}</div>;
 
   const gw = project?.network_range ? gatewayIP(project.network_range) : '';
+  const { cx, gwX, gwCY, totalW } = layout;
 
   return (
-    <div className="topo-wrapper">
+    <div className="topo-wrapper" style={{ userSelect: dragging ? 'none' : undefined }}>
 
       {/* ── Toolbar ── */}
       <div className="topo-toolbar no-print">
@@ -222,25 +290,28 @@ export default function TopographyPage() {
 
       {/* ── Canvas ── */}
       <div className="topo-scroll">
-        <div className="topo-canvas" style={{ width: totalW, minHeight: totalH, position: 'relative' }}>
+        <div className="topo-canvas" style={{ width: canvasW, minHeight: canvasH, position: 'relative' }}>
 
-          {/* ── Connector lines (SVG overlay) ── */}
+          {/* ── SVG connector lines — always on top of gateway, below nodes ── */}
           <svg
-            width={totalW}
-            height={totalH}
+            width={canvasW}
+            height={canvasH}
             style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
           >
-            {positions.map((pos, i) => {
-              const col  = nodeColor(nodes[i]);
-              const dashed = !nodes[i].sessionId;
+            {nodes.map(node => {
+              const pos = effPos.get(node.ip)!;
+              const col = nodeColor(node);
+              const nodeCX = pos.x + NW / 2;
+              const nodeTY = pos.y;
+              const midY  = (gwCY + GH / 2 + nodeTY) / 2;
               return (
                 <path
-                  key={nodes[i].ip}
-                  d={`M ${cx} ${gwCY + GH / 2} C ${cx} ${(gwCY + GH / 2 + pos.topY) / 2}, ${pos.cx} ${(gwCY + GH / 2 + pos.topY) / 2}, ${pos.cx} ${pos.topY}`}
+                  key={node.ip}
+                  d={`M ${cx} ${gwCY + GH / 2} C ${cx} ${midY}, ${nodeCX} ${midY}, ${nodeCX} ${nodeTY}`}
                   fill="none"
                   stroke={col}
-                  strokeWidth={nodes[i].sessionId ? 2 : 1.5}
-                  strokeDasharray={dashed ? '6 5' : undefined}
+                  strokeWidth={node.sessionId ? 2 : 1.5}
+                  strokeDasharray={node.sessionId ? undefined : '6 5'}
                   opacity={0.5}
                 />
               );
@@ -257,25 +328,32 @@ export default function TopographyPage() {
           </div>
 
           {/* ── Host nodes ── */}
-          {nodes.map((node, i) => {
-            const pos   = positions[i];
-            const col   = nodeColor(node);
-            const open  = node.services.filter(s => s.state === 'open');
-            const sev   = node.worstSev !== 'NONE' ? node.worstSev : null;
+          {nodes.map(node => {
+            const pos  = effPos.get(node.ip)!;
+            const col  = nodeColor(node);
+            const open = node.services.filter(s => s.state === 'open');
+            const sev  = node.worstSev !== 'NONE' ? node.worstSev : null;
+            const isDragging = dragging === node.ip;
             return (
               <div
                 key={node.ip}
                 className={[
                   'topo-node', 'topo-host',
-                  node.sessionId ? 'topo-active' : '',
+                  node.sessionId   ? 'topo-active'  : '',
                   !node.online && !node.sessionId ? 'topo-offline' : '',
+                  isDragging       ? 'topo-dragging' : '',
                 ].join(' ').trim()}
-                style={{ left: pos.x, top: pos.y, width: NW, height: NH }}
+                style={{
+                  left: pos.x, top: pos.y, width: NW, height: NH,
+                  cursor: isDragging ? 'grabbing' : 'grab',
+                  zIndex: isDragging ? 100 : 1,
+                }}
+                onMouseDown={e => handleNodeMouseDown(e, node.ip, pos)}
               >
                 <div className="topo-host-bar" style={{ background: col }} />
                 <div className="topo-host-body">
                   <div className="topo-host-ip">{node.ip}</div>
-                  {node.hostname && <div className="topo-host-hostname">{node.hostname}</div>}
+                  {node.hostname   && <div className="topo-host-hostname">{node.hostname}</div>}
                   {node.sessionName && <div className="topo-host-session">{node.sessionName}</div>}
                   {node.osInfo && (
                     <div className="topo-host-os">

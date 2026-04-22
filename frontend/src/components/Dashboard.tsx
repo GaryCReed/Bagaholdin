@@ -72,7 +72,10 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
   const loadSessions = async () => {
     try {
       const res = await axios.get(`/api/projects/${project.id}/sessions`);
-      setSessions(res.data.sessions || []);
+      const sorted = (res.data.sessions || []).sort((a: Session, b: Session) =>
+        a.target_host.localeCompare(b.target_host, undefined, { numeric: true })
+      );
+      setSessions(sorted);
     } catch {
       // silently ignore
     }
