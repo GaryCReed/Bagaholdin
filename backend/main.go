@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -730,8 +731,8 @@ func handleSaveCVEResults(db *DB) http.HandlerFunc {
 			return
 		}
 		// Read raw body — it's already a JSON array of CVE results
-		body := make([]byte, r.ContentLength)
-		if _, err := r.Body.Read(body); err != nil && r.ContentLength > 0 {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, `{"error":"failed to read body"}`)
 			return

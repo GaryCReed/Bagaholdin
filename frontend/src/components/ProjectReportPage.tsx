@@ -174,8 +174,17 @@ export default function ProjectReportPage() {
       base.services   = d.services || [];
       base.osInfo     = d.os_info  || null;
     }
-    if (cveRes.status === 'fulfilled') {
-      base.cveResults = cveRes.value.data.results || [];
+    if (cveRes.status === 'fulfilled' && cveRes.value.data.results?.length > 0) {
+      base.cveResults = cveRes.value.data.results;
+    } else {
+      // Fall back to localStorage (covers data saved before backend persistence)
+      try {
+        const ls = localStorage.getItem(`session-${session.id}-cve`);
+        if (ls) {
+          const { results } = JSON.parse(ls);
+          if (results?.length > 0) base.cveResults = results;
+        }
+      } catch { /* ignore corrupt cache */ }
     }
     if (lootRes.status === 'fulfilled') {
       base.lootItems = lootRes.value.data.items || [];
