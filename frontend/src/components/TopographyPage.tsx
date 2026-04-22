@@ -111,11 +111,16 @@ export default function TopographyPage() {
 
       const sessionByIP = new Map<string, SessionRef>(sessions.map(s => [s.target_host, s]));
 
+      // Exclude the inferred gateway IP so it doesn't appear as a host node
+      const gwIP = projR.data.project?.network_range
+        ? gatewayIP(projR.data.project.network_range) : '';
+
       // Merge discovered hosts + any session hosts not yet in project_hosts
       const seen = new Set(phosts.map(h => h.ip));
-      const merged = [...phosts] as ProjHost[];
+      const merged = phosts.filter(h => h.ip !== gwIP) as ProjHost[];
       for (const s of sessions) {
-        if (!seen.has(s.target_host)) merged.push({ ip: s.target_host, online: true });
+        if (!seen.has(s.target_host) && s.target_host !== gwIP)
+          merged.push({ ip: s.target_host, online: true });
       }
 
       if (merged.length === 0) { setNodes([]); setPending(0); return; }
