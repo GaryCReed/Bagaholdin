@@ -9,8 +9,9 @@
   overflow: hidden;
 }
 
-/* Report page opens in its own tab and needs unrestricted scroll */
-.app:has(.rp-wrapper) {
+/* Report / topology pages open in their own tab — unrestricted scroll */
+.app:has(.rp-wrapper),
+.app:has(.topo-wrapper) {
   height: auto;
   min-height: 100vh;
   overflow: visible;

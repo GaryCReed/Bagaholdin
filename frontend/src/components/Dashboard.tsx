@@ -324,6 +324,19 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
             </button>
           </div>
         </section>
+
+        {/* ── Network topology ── */}
+        <section className="report-panel">
+          <div className="panel-heading">
+            <h2>Network Topology</h2>
+            <button
+              className="btn-primary"
+              onClick={() => window.open(`/topology/${project.id}`, '_blank')}
+            >
+              View Topology
+            </button>
+          </div>
+        </section>
         </div>{/* end right-column */}
 
         {/* ── Sessions panel ── */}

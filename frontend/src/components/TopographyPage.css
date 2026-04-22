@@ -1,0 +1,318 @@
+/* ── Wrapper ────────────────────────────────────────────────────────────── */
+
+.topo-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+
+.topo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 11px 24px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.topo-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.topo-brand {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #00d4ff;
+  font-family: 'Courier New', monospace;
+}
+
+.topo-sep { color: #30363d; font-size: 16px; }
+
+.topo-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6edf3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-loading-hint {
+  font-size: 11px;
+  color: #8b949e;
+  font-style: italic;
+}
+
+/* Legend */
+.topo-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.topo-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.topo-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.topo-btn-print {
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.topo-btn-print:hover { border-color: #00d4ff; color: #00d4ff; }
+
+/* ── Canvas ─────────────────────────────────────────────────────────────── */
+
+.topo-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 48px 40px;
+}
+
+.topo-canvas {
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ── Gateway node ───────────────────────────────────────────────────────── */
+
+.topo-node {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.topo-gw {
+  background: linear-gradient(135deg, #0d1b3e 0%, #142756 100%);
+  border: 2px solid #1e3a8a;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  box-shadow: 0 0 24px rgba(30, 58, 138, 0.4), 0 0 1px #1e3a8a;
+}
+
+.topo-gw-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #5b8dee;
+}
+
+.topo-gw-ip {
+  font-size: 17px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #93c5fd;
+  letter-spacing: 0.04em;
+}
+
+.topo-gw-range {
+  font-size: 10px;
+  color: #4a6fa5;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Host node ──────────────────────────────────────────────────────────── */
+
+.topo-host {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.topo-host:hover {
+  border-color: #30363d;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.topo-host.topo-active {
+  border-color: #21262d;
+  box-shadow: 0 0 0 1px #21262d;
+}
+
+.topo-host.topo-offline {
+  opacity: 0.55;
+}
+
+/* Severity colour bar at top of card */
+.topo-host-bar {
+  height: 3px;
+  flex-shrink: 0;
+}
+
+.topo-host-body {
+  flex: 1;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+}
+
+.topo-host-ip {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  color: #e6edf3;
+  letter-spacing: 0.03em;
+}
+
+.topo-host-hostname {
+  font-size: 10px;
+  color: #8b949e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-host-session {
+  font-size: 10px;
+  color: #5b8dee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-host-os {
+  font-size: 10px;
+  color: #6e7681;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.topo-host-footer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* Badges */
+.topo-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.topo-port-badge {
+  background: transparent;
+  border: 1px solid currentColor;
+  font-family: 'Courier New', monospace;
+}
+
+.topo-sev-badge {
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.topo-offline-badge {
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+
+/* ── Loading / error ────────────────────────────────────────────────────── */
+
+.topo-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0d1117;
+  color: #8b949e;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.06em;
+}
+
+.topo-err { color: #f85149; }
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.topo-empty {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #30363d;
+  font-size: 13px;
+  font-style: italic;
+  padding: 40px;
+  text-align: center;
+}
+
+/* ── Print ──────────────────────────────────────────────────────────────── */
+
+@media print {
+  .no-print { display: none !important; }
+
+  .topo-wrapper { background: #fff; color: #111; }
+  .topo-scroll  { padding: 20px; }
+
+  .topo-gw {
+    background: #e8eaf6;
+    border-color: #3949ab;
+  }
+  .topo-gw-eyebrow { color: #3949ab; }
+  .topo-gw-ip      { color: #1a237e; }
+  .topo-gw-range   { color: #3949ab; }
+
+  .topo-host {
+    background: #fff;
+    border-color: #e0e0e0;
+  }
+  .topo-host-ip      { color: #111; }
+  .topo-host-hostname { color: #555; }
+  .topo-host-session  { color: #1a237e; }
+  .topo-host-os       { color: #888; }
+}
