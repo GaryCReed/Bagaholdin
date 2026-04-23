@@ -607,9 +607,27 @@ const AD_GROUPS: ADGroup[] = [
 ];
 
 function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; targetHost: string }) {
-  const [activeGroup, setActiveGroup] = useState(0);
-  const [output, setOutput] = useState('');
-  const [running, setRunning] = useState(false);
+  const [activeGroup, setActiveGroup]   = useState(0);
+  const [output,      setOutput]        = useState('');
+  const [running,     setRunning]       = useState(false);
+  const [scanOutput,  setScanOutput]    = useState('');
+  const [scanning,    setScanning]      = useState(false);
+  const [lootSaved,   setLootSaved]     = useState(false);
+
+  const runDiscoveryScan = async () => {
+    setScanning(true);
+    setScanOutput('');
+    setLootSaved(false);
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/ad-scan`, {});
+      setScanOutput(res.data.output || '(no output)');
+      setLootSaved(res.data.saved === true);
+    } catch (err: any) {
+      setScanOutput(err.response?.data?.error || err.message || 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const runCmd = async (cmd: string) => {
     setRunning(true);
@@ -632,6 +650,24 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
           {targetHost && <span className="action-panel-target"> — {targetHost}</span>}
         </span>
       </div>
+
+      {/* ── AD Discovery scan ── */}
+      <div className="ad-discovery-bar">
+        <button className="btn-run-scan" onClick={runDiscoveryScan} disabled={scanning}>
+          {scanning ? 'Scanning…' : 'AD Discovery Scan'}
+        </button>
+        <span className="ad-discovery-hint">
+          nmap -p 88,389 --script=ldap-rootdse,smb-os-discovery
+        </span>
+        {lootSaved && <span className="ad-loot-saved">✓ Saved to Loot</span>}
+      </div>
+
+      {(scanOutput || scanning) && (
+        <div className="ad-output-wrap" style={{ margin: '0 16px 14px' }}>
+          <div className="ad-output-label">{scanning ? 'Scanning…' : 'Discovery Output'}</div>
+          <pre className="ad-output">{scanning ? '⌛ Running nmap…' : scanOutput}</pre>
+        </div>
+      )}
 
       <div className="ad-group-tabs">
         {AD_GROUPS.map((g, i) => (

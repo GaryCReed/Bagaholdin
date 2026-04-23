@@ -615,3 +615,52 @@ func parseCachedump(output, ts string) []LootItem {
 	return singleLootItem("credential", "cachedump", ts,
 		lootFields("cached_credentials", strings.Join(creds, "\n")))
 }
+
+// AppendADDiscovery parses nmap ldap-rootdse / smb-os-discovery output and
+// saves discovered domain information as a structured loot item.
+func AppendADDiscovery(sessionID int, target, output string) error {
+	extract := func(pattern string) string {
+		m := regexp.MustCompile(pattern).FindStringSubmatch(output)
+		if len(m) > 1 {
+			return strings.TrimSpace(strings.TrimRight(m[1], "\x00\\"))
+		}
+		return ""
+	}
+
+	var fields []LootField
+	add := func(name, val string) {
+		if val != "" {
+			fields = append(fields, LootField{Name: name, Value: val})
+		}
+	}
+
+	add("DNS Domain Name",       extract(`(?i)DNS domain name: (.+)`))
+	add("DNS Forest Name",       extract(`(?i)DNS forest name: (.+)`))
+	add("DNS Computer Name",     extract(`(?i)DNS computer name: (.+)`))
+	add("NetBIOS Domain Name",   extract(`(?i)NetBIOS domain name: ([^\\\x00\n]+)`))
+	add("NetBIOS Computer Name", extract(`(?i)NetBIOS computer name: ([^\\\x00\n]+)`))
+	add("Domain SID",            extract(`(?i)Domain SID: (.+)`))
+	add("OS",                    extract(`(?i)^\s*OS: (.+)`))
+	add("Naming Context",        extract(`defaultNamingContext: (.+)`))
+	add("LDAP Service",          extract(`ldapServiceName: (.+)`))
+	add("DC DNS Hostname",       extract(`dnsHostName: (.+)`))
+
+	if len(fields) == 0 {
+		return nil
+	}
+
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "ad_discovery",
+		Source:    fmt.Sprintf("nmap -p 88,389 --script=ldap-rootdse,smb-os-discovery %s", target),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Fields:    fields,
+	})
+	return saveLootDocument(doc)
+}

@@ -2239,3 +2239,24 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.ad-discovery-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 14px;
+  flex-wrap: wrap;
+}
+
+.ad-discovery-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: 1;
+}
+
+.ad-loot-saved {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+}

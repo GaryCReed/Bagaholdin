@@ -134,6 +134,7 @@ func main() {
 		r.Get("/sessions/{id}/msf-sessions", handleListMsfSessions(db))
 		r.Post("/sessions/{id}/loot", handleSaveLoot(db))
 		r.Get("/sessions/{id}/loot", handleGetLoot(db))
+		r.Post("/sessions/{id}/ad-scan", handleADScan(db))
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))
@@ -758,6 +759,48 @@ func handleSaveCVEResults(db *DB) http.HandlerFunc {
 			return
 		}
 		fmt.Fprint(w, `{"ok":true}`)
+	}
+}
+
+func handleADScan(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		target := session.TargetHost
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		defer cancel()
+
+		out, _ := exec.CommandContext(ctx, "nmap", "-p", "88,389",
+			"--script=ldap-rootdse,smb-os-discovery", target).CombinedOutput()
+		output := string(out)
+
+		saved := false
+		if err := AppendADDiscovery(sessionID, target, output); err != nil {
+			log.Printf("AD loot save: %v", err)
+		} else {
+			saved = true
+		}
+
+		outJSON, _ := encodeJSON(output)
+		fmt.Fprintf(w, `{"output":%s,"target":%q,"saved":%v}`, outJSON, target, saved)
 	}
 }
 
