@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -202,6 +203,20 @@ func main() {
 
 	port := ":8080"
 	fmt.Printf("Server starting on http://localhost%s\n", port)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		url := "http://localhost" + port
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "windows":
+			cmd = exec.Command("cmd", "/c", "start", url)
+		default:
+			cmd = exec.Command("xdg-open", url)
+		}
+		_ = cmd.Start()
+	}()
 	log.Fatal(http.ListenAndServe(port, router))
 }
 
