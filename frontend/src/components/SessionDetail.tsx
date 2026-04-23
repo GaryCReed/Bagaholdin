@@ -606,13 +606,47 @@ const AD_GROUPS: ADGroup[] = [
   },
 ];
 
+interface WordlistEntry { label: string; path: string; group: string }
+
 function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; targetHost: string }) {
-  const [activeGroup, setActiveGroup]   = useState(0);
-  const [output,      setOutput]        = useState('');
-  const [running,     setRunning]       = useState(false);
-  const [scanOutput,  setScanOutput]    = useState('');
-  const [scanning,    setScanning]      = useState(false);
-  const [lootSaved,   setLootSaved]     = useState(false);
+  const [activeGroup,   setActiveGroup]   = useState(0);
+  const [output,        setOutput]        = useState('');
+  const [running,       setRunning]       = useState(false);
+  const [scanOutput,    setScanOutput]    = useState('');
+  const [scanning,      setScanning]      = useState(false);
+  const [lootSaved,     setLootSaved]     = useState(false);
+
+  // Kerbrute state
+  const [kbWordlists,   setKbWordlists]   = useState<WordlistEntry[]>([]);
+  const [kbWordlist,    setKbWordlist]    = useState('');
+  const [kbDomain,      setKbDomain]      = useState('');
+  const [kbRunning,     setKbRunning]     = useState(false);
+  const [kbOutput,      setKbOutput]      = useState('');
+  const [kbLootSaved,   setKbLootSaved]   = useState(false);
+
+  // Load wordlists and domain from loot on mount
+  useEffect(() => {
+    axios.get('/api/wordlists')
+      .then(res => {
+        const users: WordlistEntry[] = res.data.users || [];
+        setKbWordlists(users);
+        if (users.length > 0) setKbWordlist(users[0].path);
+      })
+      .catch(() => {});
+
+    axios.get(`/api/sessions/${sessionId}/loot`)
+      .then(res => {
+        const items: { type: string; fields: { name: string; value: string }[] }[] =
+          res.data.items || [];
+        for (const item of items) {
+          if (item.type === 'ad_discovery') {
+            const f = item.fields.find(f => f.name === 'DNS Domain Name');
+            if (f?.value) { setKbDomain(f.value); break; }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [sessionId]);
 
   const runDiscoveryScan = async () => {
     setScanning(true);
@@ -621,11 +655,35 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
     try {
       const res = await axios.post(`/api/sessions/${sessionId}/ad-scan`, {});
       setScanOutput(res.data.output || '(no output)');
-      setLootSaved(res.data.saved === true);
+      if (res.data.saved) setLootSaved(true);
+      // Auto-fill domain if not already set
+      if (!kbDomain && res.data.output) {
+        const m = res.data.output.match(/DNS domain name:\s*(.+)/i);
+        if (m) setKbDomain(m[1].trim());
+      }
     } catch (err: any) {
       setScanOutput(err.response?.data?.error || err.message || 'Scan failed');
     } finally {
       setScanning(false);
+    }
+  };
+
+  const runKerbrute = async () => {
+    if (!kbWordlist) return;
+    setKbRunning(true);
+    setKbOutput('');
+    setKbLootSaved(false);
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/kerbrute`, {
+        wordlist: kbWordlist,
+        domain:   kbDomain,
+      });
+      setKbOutput(res.data.output || '(no output)');
+      setKbLootSaved(res.data.saved === true);
+    } catch (err: any) {
+      setKbOutput(err.response?.data?.error || err.message || 'Kerbrute failed');
+    } finally {
+      setKbRunning(false);
     }
   };
 
@@ -668,6 +726,67 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
           <pre className="ad-output">{scanning ? '⌛ Running nmap…' : scanOutput}</pre>
         </div>
       )}
+
+      {/* ── Kerbrute user enumeration ── */}
+      <div className="ad-kerbrute-section">
+        <div className="ad-kerbrute-header">Kerbrute User Enumeration</div>
+        <div className="ad-kerbrute-row">
+          <label className="ad-kerbrute-label">Domain</label>
+          <input
+            className="ad-kerbrute-input"
+            value={kbDomain}
+            onChange={e => setKbDomain(e.target.value)}
+            placeholder="corp.local — auto-filled from loot"
+            spellCheck={false}
+          />
+        </div>
+        <div className="ad-kerbrute-row">
+          <label className="ad-kerbrute-label">Username list</label>
+          {kbWordlists.length > 0 ? (
+            <select
+              className="ad-kerbrute-select"
+              value={kbWordlist}
+              onChange={e => setKbWordlist(e.target.value)}
+            >
+              {(() => {
+                const groups: Record<string, WordlistEntry[]> = {};
+                kbWordlists.forEach(w => {
+                  (groups[w.group] = groups[w.group] || []).push(w);
+                });
+                return Object.entries(groups).map(([grp, entries]) => (
+                  <optgroup key={grp} label={grp}>
+                    {entries.map(w => (
+                      <option key={w.path} value={w.path}>{w.label}</option>
+                    ))}
+                  </optgroup>
+                ));
+              })()}
+            </select>
+          ) : (
+            <span className="ad-kerbrute-hint">No username wordlists found in SecLists</span>
+          )}
+        </div>
+        <div className="ad-kerbrute-row">
+          <button
+            className="btn-run-scan"
+            onClick={runKerbrute}
+            disabled={kbRunning || !kbWordlist || !kbDomain}
+            title={`kerbrute userenum -d ${kbDomain || '<domain>'} --dc ${targetHost} <wordlist>`}
+          >
+            {kbRunning ? 'Running…' : 'Run Kerbrute'}
+          </button>
+          <span className="ad-discovery-hint">
+            kerbrute userenum -d {kbDomain || '<domain>'} --dc {targetHost}
+          </span>
+          {kbLootSaved && <span className="ad-loot-saved">✓ Users saved to Loot</span>}
+        </div>
+        {(kbOutput || kbRunning) && (
+          <div className="ad-output-wrap" style={{ margin: '8px 0 0' }}>
+            <div className="ad-output-label">{kbRunning ? 'Running…' : 'Kerbrute Output'}</div>
+            <pre className="ad-output">{kbRunning ? '⌛ Running kerbrute…' : kbOutput}</pre>
+          </div>
+        )}
+      </div>
 
       <div className="ad-group-tabs">
         {AD_GROUPS.map((g, i) => (

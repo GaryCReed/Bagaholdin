@@ -616,6 +616,49 @@ func parseCachedump(output, ts string) []LootItem {
 		lootFields("cached_credentials", strings.Join(creds, "\n")))
 }
 
+// AppendKerbruteUsers parses kerbrute userenum output and saves valid usernames as loot.
+func AppendKerbruteUsers(sessionID int, target, domain, wordlist, output string) error {
+	var users []string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "VALID USERNAME") {
+			parts := strings.SplitN(line, "VALID USERNAME:", 2)
+			if len(parts) == 2 {
+				u := strings.Trim(parts[1], " \t\r")
+				if u != "" {
+					users = append(users, u)
+				}
+			}
+		}
+	}
+	if len(users) == 0 {
+		return nil
+	}
+
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+
+	fields := []LootField{
+		{Name: "Domain", Value: domain},
+		{Name: "Wordlist", Value: wordlist},
+	}
+	for _, u := range users {
+		fields = append(fields, LootField{Name: "Valid User", Value: u})
+	}
+
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "kerbrute_users",
+		Source:    fmt.Sprintf("kerbrute userenum -d %s --dc %s %s", domain, target, wordlist),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Fields:    fields,
+	})
+	return saveLootDocument(doc)
+}
+
 // AppendADDiscovery parses nmap ldap-rootdse / smb-os-discovery output and
 // saves discovered domain information as a structured loot item.
 func AppendADDiscovery(sessionID int, target, output string) error {

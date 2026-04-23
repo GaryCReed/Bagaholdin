@@ -2260,3 +2260,73 @@
   font-weight: 600;
   color: var(--green);
 }
+
+.ad-kerbrute-section {
+  margin: 0 16px 16px;
+  padding: 12px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ad-kerbrute-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.ad-kerbrute-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ad-kerbrute-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.ad-kerbrute-input {
+  flex: 1;
+  min-width: 160px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 5px 9px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.ad-kerbrute-input:focus { border-color: var(--border-cyan); }
+
+.ad-kerbrute-select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 480px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+.ad-kerbrute-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
