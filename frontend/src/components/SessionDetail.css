@@ -2147,3 +2147,95 @@
 
 .reset-wifi-output pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 .reset-wifi-error { color: var(--red); font-family: var(--font-mono); font-size: 12px; }
+
+/* ── Active Directory panel ────────────────────────────────────────────── */
+
+.ad-group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--border-dim);
+  margin-bottom: 14px;
+}
+
+.ad-group-tab {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.ad-group-tab:hover { color: var(--text-secondary); border-color: var(--border-bright); }
+
+.ad-group-tab.active {
+  background: var(--cyan-dim);
+  border-color: var(--border-cyan);
+  color: var(--cyan);
+}
+
+.ad-cmd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.ad-cmd-btn {
+  font-size: 11px;
+  padding: 7px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ad-cmd-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+.ad-cmd-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ad-output-wrap {
+  margin: 0 16px 16px;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ad-output-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--bg-surface);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.ad-output {
+  margin: 0;
+  padding: 10px;
+  background: var(--bg-base);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
