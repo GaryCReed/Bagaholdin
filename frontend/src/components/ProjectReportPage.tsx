@@ -105,6 +105,128 @@ function CVSSBars({ findings }: { findings: CVEResult[] }) {
   );
 }
 
+// ── Risk Matrix ────────────────────────────────────────────────────────────
+
+function RiskMatrix({ findings }: { findings: CVEResult[] }) {
+  if (findings.length === 0) return null;
+  const likelihood = (f: CVEResult) => f.modules?.length > 0 ? 2 : (f.githubRepos?.length ?? 0) > 0 ? 1 : 0;
+  const impact = (f: CVEResult) => { const s = f.metrics?.baseScore ?? 0; return s >= 9 ? 2 : s >= 4 ? 1 : 0; };
+  const cellColor = (l: number, i: number) => {
+    const r = l + i;
+    return r >= 4 ? '#c62828' : r === 3 ? '#e64a19' : r === 2 ? '#f57c00' : '#1565c0';
+  };
+  const SEV_COLOR: Record<string, string> = { CRITICAL: '#c62828', HIGH: '#e64a19', MEDIUM: '#f57c00', LOW: '#1565c0', NONE: '#546e7a' };
+  const labels = ['Low', 'Medium', 'High'];
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h3 className="rp-sub-title">Risk Assessment Matrix</h3>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <svg width="240" height="220" viewBox="0 0 240 220" fontFamily="Arial,sans-serif">
+          <text x="120" y="14" textAnchor="middle" fontSize="10" fill="#555">Likelihood →</text>
+          <text x="14" y="120" textAnchor="middle" fontSize="10" fill="#555" transform="rotate(-90 14 120)">Impact →</text>
+          {[0,1,2].map(col => <text key={col} x={50 + col * 60 + 30} y="30" textAnchor="middle" fontSize="9" fill="#777">{labels[col]}</text>)}
+          {[0,1,2].map(row => <text key={row} x="36" y={50 + (2 - row) * 56 + 32} textAnchor="middle" fontSize="9" fill="#777">{labels[row]}</text>)}
+          {[0,1,2].map(row => [0,1,2].map(col => (
+            <rect key={`${row}-${col}`} x={50 + col * 60} y={50 + (2 - row) * 56} width={58} height={54} rx="4"
+              fill={cellColor(col, row)} opacity="0.18" stroke={cellColor(col, row)} strokeWidth="1" />
+          )))}
+          {findings.filter(f => (f.metrics?.baseScore ?? 0) > 0).map((f, i) => {
+            const l = likelihood(f), im = impact(f);
+            return <circle key={f.cve} cx={50 + l * 60 + 29 + (i % 3) * 8 - 8} cy={50 + (2 - im) * 56 + 27}
+              r="6" fill={SEV_COLOR[f.metrics?.severity || 'NONE'] || '#546e7a'} opacity="0.85" />;
+          })}
+        </svg>
+        <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
+          <p><strong>Likelihood:</strong> High=MSF module · Medium=GitHub PoC · Low=No exploit</p>
+          <p><strong>Impact:</strong> High=CVSS≥9 · Medium=CVSS 4–8.9 · Low=CVSS&lt;4</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tools Used ─────────────────────────────────────────────────────────────
+
+function ToolsUsed({ hostData }: { hostData: { vulnOutput: string; cveResults: CVEResult[]; lootItems: LootItem[] }[] }) {
+  const tools: { name: string; purpose: string }[] = [];
+  const allLoot = hostData.flatMap(h => h.lootItems);
+  const allCVE  = hostData.flatMap(h => h.cveResults);
+  const hasVuln = hostData.some(h => h.vulnOutput);
+
+  if (hasVuln) tools.push({ name: 'nmap', purpose: 'Network service enumeration and NSE vulnerability scanning' });
+  if (allCVE.length > 0) {
+    tools.push({ name: 'NVD API', purpose: 'CVE lookup and CVSS score enrichment' });
+    if (allCVE.some(r => r.modules?.length > 0)) tools.push({ name: 'Metasploit Framework', purpose: 'CVE-to-module mapping and exploit validation' });
+    if (allCVE.some(r => (r.githubRepos?.length ?? 0) > 0)) tools.push({ name: 'GitHub API', purpose: 'Public PoC repository identification' });
+  }
+  const lootTypes = new Set(allLoot.map(i => i.type));
+  const lootSrc   = allLoot.map(i => i.source.toLowerCase()).join(' ');
+  if (lootTypes.has('credential') || lootTypes.has('current_user')) tools.push({ name: 'Meterpreter / MSF post modules', purpose: 'Post-exploitation data collection' });
+  if (lootSrc.includes('hydra') || lootTypes.has('bruteforce_credential')) tools.push({ name: 'Hydra', purpose: 'Credential brute-forcing' });
+  if (lootSrc.includes('kerbrute') || lootTypes.has('kerbrute_users')) tools.push({ name: 'Kerbrute', purpose: 'Kerberos user enumeration' });
+  if (lootSrc.includes('enum4linux') || lootTypes.has('smb_enum')) tools.push({ name: 'enum4linux-ng', purpose: 'SMB/RPC enumeration' });
+  if (lootSrc.includes('crackmapexec') || lootTypes.has('crackmapexec_finding')) tools.push({ name: 'CrackMapExec', purpose: 'AD authentication and enumeration' });
+  if (lootTypes.has('sqlmap_finding')) tools.push({ name: 'sqlmap', purpose: 'SQL injection testing' });
+  if (lootTypes.has('wpscan_finding')) tools.push({ name: 'WPScan', purpose: 'WordPress vulnerability enumeration' });
+  if (lootTypes.has('ad_discovery')) tools.push({ name: 'nmap (LDAP/SMB scripts)', purpose: 'Active Directory domain discovery' });
+  if (lootTypes.has('wifi_handshake')) tools.push({ name: 'aircrack-ng / hashcat', purpose: 'WPA/WPA2 handshake capture and cracking' });
+
+  if (tools.length === 0) return null;
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h3 className="rp-sub-title">Tools &amp; Techniques</h3>
+      <table className="rp-table">
+        <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+        <tbody>{tools.map(t => <tr key={t.name}><td className="rp-mono" style={{ whiteSpace: 'nowrap' }}>{t.name}</td><td>{t.purpose}</td></tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Remediation Roadmap ────────────────────────────────────────────────────
+
+function RemediationRoadmap({ findings }: { findings: CVEResult[] }) {
+  if (findings.length === 0) return null;
+  const SEV_COLOR: Record<string, string> = { CRITICAL: '#c62828', HIGH: '#e64a19', MEDIUM: '#f57c00', LOW: '#1565c0', NONE: '#546e7a' };
+  const effort = (f: CVEResult) => f.modules?.length > 0 ? 'Low (patch available)' : (f.githubRepos?.length ?? 0) > 0 ? 'Medium' : 'Low (patch)';
+  const priority = (sev: string) => {
+    if (sev === 'CRITICAL') return 'Immediate';
+    if (sev === 'HIGH')     return 'Short-term (< 30 days)';
+    if (sev === 'MEDIUM')   return 'Medium-term (< 90 days)';
+    return 'Routine maintenance';
+  };
+  return (
+    <div style={{ marginTop: 20, pageBreakBefore: 'auto' }}>
+      <h3 className="rp-sub-title">Remediation Roadmap</h3>
+      <table className="rp-table">
+        <thead>
+          <tr><th>Priority</th><th>ID</th><th>CVE</th><th>Severity</th><th>Effort</th><th>Recommendation</th></tr>
+        </thead>
+        <tbody>
+          {findings.map((f, i) => {
+            const sev = f.metrics?.severity || 'NONE';
+            const col = SEV_COLOR[sev] || '#546e7a';
+            return (
+              <tr key={f.cve}>
+                <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{priority(sev)}</td>
+                <td className="rp-mono" style={{ fontSize: 11 }}>VULN-{String(i + 1).padStart(3, '0')}</td>
+                <td className="rp-mono" style={{ fontSize: 11 }}>{f.cve}</td>
+                <td><span className="rp-inline-badge" style={{ background: col }}>{sev}</span></td>
+                <td style={{ fontSize: 11 }}>{effort(f)}</td>
+                <td style={{ fontSize: 11 }}>
+                  {f.metrics?.description
+                    ? 'Apply vendor patch. ' + (sev === 'CRITICAL' || sev === 'HIGH' ? 'Prioritise immediately.' : 'Schedule in next maintenance window.')
+                    : 'Apply vendor patch and review service configuration.'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function remediation(item: CVEResult): string {
@@ -477,6 +599,9 @@ export default function ProjectReportPage() {
               </table>
             </>
           )}
+
+          <RiskMatrix findings={allCVEs} />
+          <ToolsUsed hostData={hostData} />
         </section>
 
         {/* ═══════════════════ 2. SCOPE AND METHODOLOGY ═══════════════════ */}
@@ -699,6 +824,8 @@ export default function ProjectReportPage() {
               );
             })
           )}
+
+          <RemediationRoadmap findings={allCVEs} />
         </section>
 
         {/* ═══════════════════ 5. POST-EXPLOITATION ═══════════════════ */}

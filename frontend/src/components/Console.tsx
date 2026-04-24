@@ -178,6 +178,18 @@ export default function Console({ sessionId, onSessionOpened }: ConsoleProps) {
             <span className="status-dot"></span>
             {connected ? 'Connected' : 'Disconnected'}
           </div>
+          {messages.length > 0 && (
+            <button
+              className="reconnect-btn"
+              onClick={() => {
+                const text = messages.join('\n').replace(/<[^>]+>/g, '');
+                navigator.clipboard.writeText(text).catch(() => {});
+              }}
+              title="Copy console output to clipboard"
+            >
+              Copy Output
+            </button>
+          )}
           {!connected && reconnectAttempt >= MAX_RECONNECT_ATTEMPTS && (
             <button className="reconnect-btn" onClick={handleManualReconnect}>
               Reconnect

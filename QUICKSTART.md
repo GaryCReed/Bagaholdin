@@ -114,15 +114,18 @@ Press `Ctrl+C` in the terminal running `start.sh`. Both the backend and frontend
 
 ## Production Build
 
-Build a single self-contained binary that serves the React app on port 8080:
+Build a single self-contained binary that serves the React app on port 8080.
+
+> **Important — two-step build:** The binary embeds the React UI at compile time from `backend/ui/`. You must copy the frontend build into that directory **before** running `go build`, otherwise the binary will serve a stale or empty UI.
 
 ```bash
-# Option 1 — use the install script
+# Option 1 — use the install script (handles both steps automatically)
 chmod +x install.sh
-./install.sh           # builds frontend then compiles backend/bagaholdin
+./install.sh
 
-# Option 2 — manual
+# Option 2 — manual (both steps required)
 cd frontend && npm run build
+rm -rf ../backend/ui && cp -r build ../backend/ui   # ← required before go build
 cd ../backend && go build -o bagaholdin .
 ```
 

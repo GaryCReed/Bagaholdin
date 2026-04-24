@@ -137,6 +137,151 @@ function parseNSE(output: string): VulnFinding[] {
   return findings.filter(f => { if (seen.has(f.script)) return false; seen.add(f.script); return true; });
 }
 
+// ── Risk Assessment Matrix ─────────────────────────────────────────────────
+
+function RiskMatrix({ findings }: { findings: CVEResult[] }) {
+  if (findings.length === 0) return null;
+
+  // Likelihood: HIGH if has MSF module, MEDIUM if has GitHub PoC, LOW otherwise
+  const likelihood = (f: CVEResult): number => {
+    if (f.modules?.length > 0) return 2;         // HIGH
+    if ((f.githubRepos?.length ?? 0) > 0) return 1; // MEDIUM
+    return 0;                                     // LOW
+  };
+  // Impact: derived from CVSS score
+  const impact = (f: CVEResult): number => {
+    const s = f.metrics?.baseScore ?? 0;
+    if (s >= 9.0) return 2; // HIGH
+    if (s >= 4.0) return 1; // MEDIUM
+    return 0;               // LOW
+  };
+
+  // Cell colour (likelihood × impact → risk)
+  const cellRisk = (l: number, i: number): string => {
+    const r = l + i;
+    if (r >= 4) return '#c62828'; // CRITICAL
+    if (r === 3) return '#e64a19'; // HIGH
+    if (r === 2) return '#f57c00'; // MEDIUM
+    return '#1565c0';             // LOW
+  };
+
+  const labels = ['Low', 'Medium', 'High'];
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h3 className="rp-sub-title">Risk Assessment Matrix</h3>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <svg width="240" height="220" viewBox="0 0 240 220" fontFamily="Arial,sans-serif">
+          {/* Axis labels */}
+          <text x="120" y="14" textAnchor="middle" fontSize="10" fill="#555">Likelihood →</text>
+          <text x="14" y="120" textAnchor="middle" fontSize="10" fill="#555" transform="rotate(-90 14 120)">Impact →</text>
+          {[0,1,2].map(col => (
+            <text key={col} x={50 + col * 60 + 30} y="30" textAnchor="middle" fontSize="9" fill="#777">{labels[col]}</text>
+          ))}
+          {[0,1,2].map(row => (
+            <text key={row} x="36" y={50 + (2 - row) * 56 + 32} textAnchor="middle" fontSize="9" fill="#777">{labels[row]}</text>
+          ))}
+          {/* Grid cells */}
+          {[0,1,2].map(row => [0,1,2].map(col => (
+            <rect key={`${row}-${col}`}
+              x={50 + col * 60} y={50 + (2 - row) * 56}
+              width={58} height={54} rx="4"
+              fill={cellRisk(col, row)} opacity="0.18" stroke={cellRisk(col, row)} strokeWidth="1"
+            />
+          )))}
+          {/* Plot findings */}
+          {findings.filter(f => (f.metrics?.baseScore ?? 0) > 0 || f.modules?.length > 0).map((f, i) => {
+            const l = likelihood(f), im = impact(f);
+            const x = 50 + l * 60 + 29 + (i % 3) * 8 - 8;
+            const y = 50 + (2 - im) * 56 + 27;
+            const col = SEV_COLOR[f.metrics?.severity || 'NONE'] || '#546e7a';
+            return (
+              <circle key={f.cve} cx={x} cy={y} r="6" fill={col} opacity="0.85"><title>{f.cve}</title></circle>
+            );
+          })}
+        </svg>
+        <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6, maxWidth: 260 }}>
+          <p><strong>Likelihood</strong></p>
+          <p>High — Confirmed Metasploit module</p>
+          <p>Medium — Public PoC on GitHub</p>
+          <p>Low — No known public exploit</p>
+          <br />
+          <p><strong>Impact</strong></p>
+          <p>High — CVSS ≥ 9.0</p>
+          <p>Medium — CVSS 4.0–8.9</p>
+          <p>Low — CVSS &lt; 4.0</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tools & Techniques Used ────────────────────────────────────────────────
+
+interface ToolsUsedProps {
+  vulnOutput?: string;
+  cveResults?: CVEResult[];
+  lootItems?: LootItem[];
+}
+
+function ToolsUsed({ vulnOutput, cveResults, lootItems }: ToolsUsedProps) {
+  const tools: { name: string; purpose: string }[] = [];
+
+  if (vulnOutput) {
+    tools.push({ name: 'nmap', purpose: 'Network service enumeration and vulnerability scanning (NSE scripts: vuln, vulners)' });
+  }
+  if (cveResults && cveResults.length > 0) {
+    tools.push({ name: 'NVD API (nvd.nist.gov)', purpose: 'CVE lookup and CVSS score enrichment' });
+    if (cveResults.some(r => r.modules?.length > 0)) {
+      tools.push({ name: 'Metasploit Framework', purpose: 'CVE-to-module mapping and exploit validation' });
+    }
+    if (cveResults.some(r => (r.githubRepos?.length ?? 0) > 0)) {
+      tools.push({ name: 'GitHub API', purpose: 'Public proof-of-concept exploit repository identification' });
+    }
+  }
+  if (lootItems) {
+    const types = new Set(lootItems.map(i => i.type));
+    const sources = lootItems.map(i => i.source.toLowerCase()).join(' ');
+    if (types.has('credential') || types.has('current_user') || types.has('system_info'))
+      tools.push({ name: 'Meterpreter / MSF post modules', purpose: 'Post-exploitation data collection (hashes, system info, user context)' });
+    if (sources.includes('hydra') || types.has('bruteforce_credential'))
+      tools.push({ name: 'Hydra', purpose: 'Network service credential brute-forcing' });
+    if (sources.includes('kerbrute') || types.has('kerbrute_users'))
+      tools.push({ name: 'Kerbrute', purpose: 'Kerberos user enumeration against Active Directory' });
+    if (sources.includes('enum4linux') || types.has('smb_enum'))
+      tools.push({ name: 'enum4linux-ng', purpose: 'SMB/RPC enumeration (users, groups, shares, password policy)' });
+    if (sources.includes('crackmapexec') || types.has('crackmapexec_finding'))
+      tools.push({ name: 'CrackMapExec', purpose: 'Active Directory authentication and enumeration' });
+    if (types.has('sqlmap_finding'))
+      tools.push({ name: 'sqlmap', purpose: 'SQL injection detection and exploitation' });
+    if (types.has('wpscan_finding'))
+      tools.push({ name: 'WPScan', purpose: 'WordPress vulnerability and user enumeration' });
+    if (types.has('ad_discovery'))
+      tools.push({ name: 'nmap (LDAP/SMB scripts)', purpose: 'Active Directory domain discovery (ldap-rootdse, smb-os-discovery)' });
+    if (types.has('wifi_handshake'))
+      tools.push({ name: 'aircrack-ng suite / hashcat', purpose: 'WPA/WPA2 handshake capture and password cracking' });
+  }
+
+  if (tools.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h3 className="rp-sub-title">Tools &amp; Techniques</h3>
+      <table className="rp-table">
+        <thead><tr><th>Tool / Resource</th><th>Purpose</th></tr></thead>
+        <tbody>
+          {tools.map(t => (
+            <tr key={t.name}>
+              <td className="rp-mono" style={{ whiteSpace: 'nowrap' }}>{t.name}</td>
+              <td>{t.purpose}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function remediation(item: CVEResult): string {
   const d = (item.metrics?.description || '').toLowerCase();
   const sev = item.metrics?.severity || '';
@@ -506,6 +651,9 @@ export default function ReportPage() {
               </table>
             </>
           )}
+
+          <RiskMatrix findings={cveResults} />
+          <ToolsUsed vulnOutput={vulnOutput} cveResults={cveResults} lootItems={lootItems} />
         </section>
 
         {/* ═══════════════════ 2. METHODOLOGY ═══════════════════ */}

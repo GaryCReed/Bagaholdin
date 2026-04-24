@@ -101,8 +101,12 @@ func main() {
 	router.Get("/api/ws", handleWebSocket(db))
 
 	// Protected routes
+	// Broad rate limit on all mutating session-action routes (120 req/min per IP)
+	actionLimiter := httprate.LimitByIP(120, time.Minute)
+
 	router.Route("/api", func(r chi.Router) {
 		r.Use(authMiddleware)
+		r.Use(actionLimiter)
 
 		r.Get("/health", handleHealth)
 		r.Get("/network", handleNetwork)
@@ -136,6 +140,8 @@ func main() {
 		r.Get("/sessions/{id}/loot", handleGetLoot(db))
 		r.Post("/sessions/{id}/ad-scan", handleADScan(db))
 		r.Post("/sessions/{id}/kerbrute", handleRunKerbrute(db))
+		r.Post("/sessions/{id}/enum4linux", handleEnum4Linux(db))
+		registerCMERoutes(r, db)
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))
@@ -205,6 +211,9 @@ func main() {
 
 	port := ":8080"
 	fmt.Printf("Server starting on http://localhost%s\n", port)
+
+	setupCleanup()
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		url := "http://localhost" + port
@@ -842,6 +851,55 @@ func handleRunKerbrute(db *DB) http.HandlerFunc {
 
 		outJSON, _ := encodeJSON(output)
 		fmt.Fprintf(w, `{"output":%s,"domain":%q,"saved":%v}`, outJSON, domain, lootSaved)
+	}
+}
+
+func handleEnum4Linux(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		session, err := db.GetSession(sessionID, claims.UserID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+
+		target := session.TargetHost
+		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		defer cancel()
+
+		// Prefer enum4linux-ng, fall back to enum4linux
+		tool := "enum4linux-ng"
+		args := []string{"-A", target}
+		if _, lookErr := exec.LookPath(tool); lookErr != nil {
+			tool = "enum4linux"
+			args = []string{"-a", target}
+		}
+
+		out, _ := exec.CommandContext(ctx, tool, args...).CombinedOutput()
+		output := string(out)
+
+		saved := false
+		if err := AppendSMBEnum(sessionID, target, output); err != nil {
+			log.Printf("enum4linux loot save: %v", err)
+		} else {
+			saved = true
+		}
+
+		outJSON, _ := encodeJSON(output)
+		fmt.Fprintf(w, `{"output":%s,"saved":%v}`, outJSON, saved)
 	}
 }
 

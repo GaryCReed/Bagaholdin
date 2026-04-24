@@ -85,6 +85,12 @@ export default function TopographyPage() {
   } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
+  // Filter & label state
+  const [onlineOnly,  setOnlineOnly]  = useState(false);
+  const [nodeLabels,  setNodeLabels]  = useState<Map<string, string>>(new Map());
+  const [editLabel,   setEditLabel]   = useState<string | null>(null); // ip being edited
+  const [labelDraft,  setLabelDraft]  = useState('');
+
   // ── Data loading ────────────────────────────────────────────────────────────
 
   const fetchSessionData = useCallback(async (s: SessionRef) => {
@@ -166,18 +172,17 @@ export default function TopographyPage() {
 
       setNodes(sorted);
 
-      // Restore any previously saved drag positions for this project
+      // Restore previously saved drag positions
       try {
         const saved = localStorage.getItem(`topology-${projectId}-pos`);
-        if (saved) {
-          const parsed = JSON.parse(saved) as Record<string, Pos>;
-          setDragPos(new Map(Object.entries(parsed)));
-        } else {
-          setDragPos(new Map());
-        }
-      } catch {
-        setDragPos(new Map());
-      }
+        setDragPos(saved ? new Map(Object.entries(JSON.parse(saved) as Record<string, Pos>)) : new Map());
+      } catch { setDragPos(new Map()); }
+
+      // Restore node labels
+      try {
+        const savedLabels = localStorage.getItem(`topology-${projectId}-labels`);
+        setNodeLabels(savedLabels ? new Map(Object.entries(JSON.parse(savedLabels) as Record<string, string>)) : new Map());
+      } catch { setNodeLabels(new Map()); }
 
       setPending(0);
     }).catch(err => {
@@ -211,13 +216,31 @@ export default function TopographyPage() {
     };
   }, []);
 
-  // Persist drag positions to localStorage whenever they change
+  // Persist drag positions
   useEffect(() => {
     if (!projectId || nodes.length === 0) return;
     const obj: Record<string, Pos> = {};
     dragPos.forEach((pos, ip) => { obj[ip] = pos; });
     localStorage.setItem(`topology-${projectId}-pos`, JSON.stringify(obj));
   }, [dragPos, projectId, nodes.length]);
+
+  // Persist node labels
+  useEffect(() => {
+    if (!projectId) return;
+    const obj: Record<string, string> = {};
+    nodeLabels.forEach((lbl, ip) => { if (lbl) obj[ip] = lbl; });
+    localStorage.setItem(`topology-${projectId}-labels`, JSON.stringify(obj));
+  }, [nodeLabels, projectId]);
+
+  const resetLayout = () => {
+    setDragPos(new Map());
+    localStorage.removeItem(`topology-${projectId}-pos`);
+  };
+
+  const saveLabel = (ip: string, value: string) => {
+    setNodeLabels(prev => { const n = new Map(prev); n.set(ip, value.trim()); return n; });
+    setEditLabel(null);
+  };
 
   const handleNodeMouseDown = (e: React.MouseEvent, ip: string, curPos: Pos) => {
     e.preventDefault();
@@ -251,13 +274,32 @@ export default function TopographyPage() {
     return { cols, rows, gridW, totalW, baseH, cx, gwX, gwCY, hostStartX, initPos };
   }, [nodes]);
 
+  // Filtered nodes for display
+  const visibleNodes = useMemo(() =>
+    onlineOnly ? nodes.filter(n => n.online || !!n.sessionId) : nodes
+  , [nodes, onlineOnly]);
+
+  // Subnet grouping: derive /24 prefix → list of IPs
+  const subnetGroups = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const n of visibleNodes) {
+      const parts = n.ip.split('.');
+      if (parts.length === 4) {
+        const subnet = parts.slice(0, 3).join('.');
+        (groups.get(subnet) ?? (groups.set(subnet, []), groups.get(subnet)!)).push(n.ip);
+      }
+    }
+    // Only draw boxes for subnets with 2+ hosts
+    return new Map([...groups.entries()].filter(([, ips]) => ips.length > 1));
+  }, [visibleNodes]);
+
   // Effective position per node: drag override first, then initial grid position
   const effPos = useMemo<Map<string, Pos>>(() => {
-    return new Map(nodes.map(n => [
+    return new Map(visibleNodes.map(n => [
       n.ip,
       dragPos.get(n.ip) ?? layout.initPos.get(n.ip) ?? { x: 0, y: 0 },
     ]));
-  }, [nodes, dragPos, layout.initPos]);
+  }, [visibleNodes, dragPos, layout.initPos]);
 
   // Canvas dimensions: grow to contain any dragged nodes
   const canvasW = useMemo(() => {
@@ -304,23 +346,48 @@ export default function TopographyPage() {
             </span>
           ))}
         </div>
-        <button className="topo-btn-print" onClick={() => window.print()}>
-          Print / Save as PDF
-        </button>
+        <div className="topo-toolbar-actions">
+          <label className="topo-toggle">
+            <input type="checkbox" checked={onlineOnly} onChange={e => setOnlineOnly(e.target.checked)} />
+            Online only
+          </label>
+          <button className="topo-btn-print" onClick={resetLayout}>Reset Layout</button>
+          <button className="topo-btn-print" onClick={() => window.print()}>Print / Save as PDF</button>
+        </div>
       </div>
 
       {/* ── Canvas ── */}
       <div className="topo-scroll">
         <div className="topo-canvas" style={{ width: canvasW, minHeight: canvasH, position: 'relative' }}>
 
-          {/* ── SVG connector lines — always on top of gateway, below nodes ── */}
+          {/* ── SVG: subnet boxes + connector lines ── */}
           <svg
             width={canvasW}
             height={canvasH}
             style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
           >
-            {nodes.map(node => {
-              const pos = effPos.get(node.ip)!;
+            {/* Subnet boundary boxes */}
+            {[...subnetGroups.entries()].map(([subnet, ips]) => {
+              const positions = ips.map(ip => effPos.get(ip)).filter(Boolean) as Pos[];
+              if (positions.length < 2) return null;
+              const xs = positions.map(p => p.x), ys = positions.map(p => p.y);
+              const x1 = Math.min(...xs) - 12, y1 = Math.min(...ys) - 10;
+              const x2 = Math.max(...xs) + NW + 12, y2 = Math.max(...ys) + NH + 10;
+              return (
+                <g key={subnet}>
+                  <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1}
+                    rx="10" fill="rgba(255,255,255,0.03)" stroke="#2a3042"
+                    strokeWidth="1.5" strokeDasharray="6 4" />
+                  <text x={x1 + 10} y={y1 + 16} fontSize="10" fill="#3d4b6e"
+                    fontFamily="'Courier New',monospace">{subnet}.0/24</text>
+                </g>
+              );
+            })}
+
+            {/* Connector lines */}
+            {visibleNodes.map(node => {
+              const pos = effPos.get(node.ip);
+              if (!pos) return null;
               const col = nodeColor(node);
               const nodeCX = pos.x + NW / 2;
               const nodeTY = pos.y;
@@ -349,12 +416,15 @@ export default function TopographyPage() {
           </div>
 
           {/* ── Host nodes ── */}
-          {nodes.map(node => {
-            const pos  = effPos.get(node.ip)!;
+          {visibleNodes.map(node => {
+            const pos  = effPos.get(node.ip);
+            if (!pos) return null;
             const col  = nodeColor(node);
             const open = node.services.filter(s => s.state === 'open');
             const sev  = node.worstSev !== 'NONE' ? node.worstSev : null;
-            const isDragging = dragging === node.ip;
+            const isDragging  = dragging === node.ip;
+            const label       = nodeLabels.get(node.ip) || '';
+            const isEditLabel = editLabel === node.ip;
             return (
               <div
                 key={node.ip}
@@ -370,9 +440,31 @@ export default function TopographyPage() {
                   zIndex: isDragging ? 100 : 1,
                 }}
                 onMouseDown={e => handleNodeMouseDown(e, node.ip, pos)}
+                onDoubleClick={e => {
+                  e.preventDefault();
+                  setEditLabel(node.ip);
+                  setLabelDraft(label);
+                }}
               >
                 <div className="topo-host-bar" style={{ background: col }} />
                 <div className="topo-host-body">
+                  {isEditLabel ? (
+                    <input
+                      className="topo-label-input"
+                      autoFocus
+                      value={labelDraft}
+                      onChange={e => setLabelDraft(e.target.value)}
+                      onBlur={() => saveLabel(node.ip, labelDraft)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') saveLabel(node.ip, labelDraft);
+                        if (e.key === 'Escape') setEditLabel(null);
+                      }}
+                      onMouseDown={e => e.stopPropagation()}
+                      placeholder="Label…"
+                    />
+                  ) : label ? (
+                    <div className="topo-node-label">{label}</div>
+                  ) : null}
                   <div className="topo-host-ip">{node.ip}</div>
                   {node.hostname   && <div className="topo-host-hostname">{node.hostname}</div>}
                   {node.sessionName && <div className="topo-host-session">{node.sessionName}</div>}

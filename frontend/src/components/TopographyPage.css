@@ -55,6 +55,25 @@
   font-style: italic;
 }
 
+.topo-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.topo-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #8b949e;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.topo-toggle input { cursor: pointer; accent-color: #00d4ff; }
+
 /* Legend */
 .topo-legend {
   display: flex;
@@ -320,4 +339,35 @@
   .topo-host-hostname { color: #555; }
   .topo-host-session  { color: #1a237e; }
   .topo-host-os       { color: #888; }
+}
+
+/* ── Node label (double-click to edit) ────────────────────────────────────── */
+
+.topo-node-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #00d4ff;
+  background: rgba(0, 212, 255, 0.1);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-label-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0d1117;
+  border: 1px solid #00d4ff;
+  border-radius: 3px;
+  color: #00d4ff;
+  font-size: 11px;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  outline: none;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }

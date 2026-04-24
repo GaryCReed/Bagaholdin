@@ -707,3 +707,121 @@ func AppendADDiscovery(sessionID int, target, output string) error {
 	})
 	return saveLootDocument(doc)
 }
+
+// AppendSMBEnum parses enum4linux / enum4linux-ng output and saves users,
+// groups, shares, and password policy as a structured loot item.
+func AppendSMBEnum(sessionID int, target, output string) error {
+	extract := func(section, pattern string) []string {
+		var results []string
+		inSection := false
+		re := regexp.MustCompile(pattern)
+		for _, line := range strings.Split(output, "\n") {
+			if strings.Contains(line, section) { inSection = true; continue }
+			if inSection {
+				if strings.HasPrefix(line, " ===") || strings.HasPrefix(line, "====") { break }
+				m := re.FindStringSubmatch(line)
+				if len(m) > 1 { results = append(results, strings.TrimSpace(m[1])) }
+			}
+		}
+		return results
+	}
+
+	// Users — match lines like: user:[username] rid:[nnn]
+	userRE := regexp.MustCompile(`user:\[([^\]]+)\]`)
+	var users []string
+	for _, line := range strings.Split(output, "\n") {
+		m := userRE.FindStringSubmatch(line)
+		if len(m) > 1 { users = append(users, m[1]) }
+	}
+
+	// Groups — match lines like: group:[name] rid:[nnn]
+	groupRE := regexp.MustCompile(`group:\[([^\]]+)\]`)
+	var groups []string
+	for _, line := range strings.Split(output, "\n") {
+		m := groupRE.FindStringSubmatch(line)
+		if len(m) > 1 { groups = append(groups, m[1]) }
+	}
+
+	// Shares — match lines like: Sharename     Type     Comment
+	var shares []string
+	inShares := false
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "Sharename") && strings.Contains(line, "Type") { inShares = true; continue }
+		if inShares {
+			if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "---") { if len(shares) > 0 { break }; continue }
+			parts := strings.Fields(line)
+			if len(parts) > 0 && !strings.HasPrefix(parts[0], "-") { shares = append(shares, parts[0]) }
+		}
+	}
+
+	// Password min length
+	minPwRE := regexp.MustCompile(`(?i)minimum password length:\s*(\d+)`)
+	minPw := ""
+	if m := minPwRE.FindStringSubmatch(output); len(m) > 1 { minPw = m[1] }
+
+	_ = extract // silence unused warning
+
+	if len(users) == 0 && len(groups) == 0 && len(shares) == 0 {
+		return nil
+	}
+
+	var fields []LootField
+	if len(users) > 0 {
+		fields = append(fields, LootField{Name: "Users", Value: strings.Join(users, ", ")})
+	}
+	if len(groups) > 0 {
+		fields = append(fields, LootField{Name: "Groups", Value: strings.Join(groups, ", ")})
+	}
+	if len(shares) > 0 {
+		fields = append(fields, LootField{Name: "Shares", Value: strings.Join(shares, ", ")})
+	}
+	if minPw != "" {
+		fields = append(fields, LootField{Name: "Min Password Length", Value: minPw})
+	}
+
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "smb_enum",
+		Source:    fmt.Sprintf("enum4linux-ng -A %s", target),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Fields:    fields,
+	})
+	return saveLootDocument(doc)
+}
+
+// AppendCMEFindings parses crackmapexec output and saves [+] success lines as loot.
+func AppendCMEFindings(sessionID int, target, proto, output string) error {
+	var fields []LootField
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "[+]") {
+			val := strings.TrimSpace(line)
+			if val != "" {
+				fields = append(fields, LootField{Name: "Finding", Value: val})
+			}
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+
+	lootMu.Lock()
+	defer lootMu.Unlock()
+
+	doc := loadLootDocument(sessionID)
+	if doc == nil {
+		doc = &LootDocument{SessionID: sessionID, Target: target}
+	}
+	doc.Items = append(doc.Items, LootItem{
+		Type:      "crackmapexec_finding",
+		Source:    fmt.Sprintf("crackmapexec %s %s", proto, target),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Fields:    fields,
+	})
+	return saveLootDocument(doc)
+}

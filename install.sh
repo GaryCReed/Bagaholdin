@@ -39,7 +39,7 @@ fi
 ok "curl"
 
 # ── 4. apt-installable pentesting tools not in default Kali ───────────────────
-APT_TOOLS=(wpscan hostapd-mana hcxtools python3-pam)
+APT_TOOLS=(wpscan hostapd-mana hcxtools python3-pam enum4linux crackmapexec evil-winrm responder impacket-scripts)
 for pkg in "${APT_TOOLS[@]}"; do
     if dpkg -s "$pkg" &>/dev/null 2>&1; then
         ok "$pkg (already installed)"
@@ -63,6 +63,13 @@ else
     fi
 fi
 command -v feroxbuster &>/dev/null && ok "feroxbuster" || warn "feroxbuster not installed"
+
+# ── 5b. kerbrute (not in apt — check PATH only, guide user if missing) ────────
+if command -v kerbrute &>/dev/null; then
+    ok "kerbrute"
+else
+    warn "kerbrute not found — download the latest release from https://github.com/ropnop/kerbrute/releases and place in /usr/local/bin/kerbrute"
+fi
 
 # ── 6. Go runtime ─────────────────────────────────────────────────────────────
 GO_MIN_MAJOR=1
@@ -167,7 +174,7 @@ ok "Backend binary → backend/bagaholdin (single binary, frontend embedded)"
 # ── verify default Kali tools present ─────────────────────────────────────────
 echo ""
 echo "Checking default Kali tools…"
-KALI_TOOLS=(msfconsole msfvenom searchsploit nmap airmon-ng airodump-ng aireplay-ng hashcat hydra sqlmap)
+KALI_TOOLS=(msfconsole msfvenom searchsploit nmap airmon-ng airodump-ng aireplay-ng hashcat hydra sqlmap kerbrute enum4linux crackmapexec evil-winrm responder)
 ALL_PRESENT=true
 for t in "${KALI_TOOLS[@]}"; do
     if command -v "$t" &>/dev/null; then
