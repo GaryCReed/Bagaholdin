@@ -795,7 +795,7 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
   };
 
   return (
-    <div className="action-panel">
+    <div className="action-panel action-panel-ad">
       <div className="action-panel-header">
         <span className="action-panel-title">
           Active Directory

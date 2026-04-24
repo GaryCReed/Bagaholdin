@@ -282,7 +282,8 @@
   overflow: hidden;
 }
 
-.action-panel-loot {
+.action-panel-loot,
+.action-panel-ad {
   overflow-y: auto;
   max-height: calc(100vh - 120px);
 }
