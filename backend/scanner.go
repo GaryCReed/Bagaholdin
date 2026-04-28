@@ -100,6 +100,44 @@ func getLocalIPs() map[string]bool {
 // -PE/-PP: ICMP echo and timestamp probes.
 // -PS/-PA: TCP SYN and ACK probes to common ports, catching hosts that block ICMP but have
 //          open or filtered ports.
+// gatewayFromCIDR derives the x.x.x.1 address from a CIDR range.
+func gatewayFromCIDR(cidr string) string {
+	base := strings.SplitN(cidr, "/", 2)[0]
+	octets := strings.Split(base, ".")
+	if len(octets) == 4 {
+		octets[3] = "1"
+		return strings.Join(octets, ".")
+	}
+	return ""
+}
+
+// parseNmapHosts parses nmap text output and returns discovered hosts,
+// skipping any IPs in the localIPs set.
+func parseNmapHosts(out []byte, localIPs map[string]bool) []ScanResult {
+	re := regexp.MustCompile(`Nmap scan report for (.+)`)
+	var results []ScanResult
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	for sc.Scan() {
+		m := re.FindStringSubmatch(sc.Text())
+		if m == nil {
+			continue
+		}
+		host := strings.TrimSpace(m[1])
+		r := ScanResult{}
+		if idx := strings.Index(host, " ("); idx != -1 {
+			r.Hostname = host[:idx]
+			r.IP = strings.TrimSuffix(host[idx+2:], ")")
+		} else {
+			r.IP = host
+		}
+		if localIPs[r.IP] {
+			continue
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 func scanNetwork(cidr string) ([]ScanResult, error) {
 	cmd := exec.Command("nmap", "-sn",
 		"-PE", "-PP",
@@ -114,29 +152,36 @@ func scanNetwork(cidr string) ([]ScanResult, error) {
 	}
 
 	localIPs := getLocalIPs()
-	re := regexp.MustCompile(`Nmap scan report for (.+)`)
-	var results []ScanResult
+	results := parseNmapHosts(out, localIPs)
 
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Text()
-		matches := re.FindStringSubmatch(line)
-		if matches == nil {
-			continue
+	// Routers (x.x.x.1) often filter ICMP and generic ports — probe explicitly.
+	gw := gatewayFromCIDR(cidr)
+	if gw != "" && !localIPs[gw] {
+		found := false
+		for _, r := range results {
+			if r.IP == gw {
+				found = true
+				break
+			}
 		}
-		host := strings.TrimSpace(matches[1])
-		result := ScanResult{}
-		if idx := strings.Index(host, " ("); idx != -1 {
-			result.Hostname = host[:idx]
-			result.IP = strings.TrimSuffix(host[idx+2:], ")")
-		} else {
-			result.IP = host
+		if !found {
+			// Targeted probe with ports common on routers/APs
+			gwCmd := exec.Command("nmap", "-sn",
+				"-PE", "-PS22,23,80,443,8080,8443,8888",
+				"-PA80,443",
+				"-T4", gw,
+			)
+			gwOut, _ := gwCmd.Output()
+			gwHosts := parseNmapHosts(gwOut, localIPs)
+			if len(gwHosts) > 0 {
+				// Responded — prepend to keep gateway at the top
+				results = append(gwHosts, results...)
+			} else {
+				// Didn't respond but the gateway must exist — add as online
+				// so users can see and interact with it
+				results = append([]ScanResult{{IP: gw, Hostname: "gateway"}}, results...)
+			}
 		}
-		// Skip the attacker's own interfaces.
-		if localIPs[result.IP] {
-			continue
-		}
-		results = append(results, result)
 	}
 
 	if results == nil {
