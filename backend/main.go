@@ -134,6 +134,8 @@ func main() {
 		r.Post("/sessions/{id}/cve-analysis", handleCVEAnalysis(db))
 		r.Get("/sessions/{id}/cve-results", handleGetCVEResults(db))
 		r.Post("/sessions/{id}/cve-results", handleSaveCVEResults(db))
+		r.Get("/sessions/{id}/enum-results", handleGetEnumResults(db))
+		r.Post("/sessions/{id}/enum-results", handleSaveEnumResults(db))
 		r.Post("/sessions/{id}/shell", handleShellCommand(db))
 		r.Get("/sessions/{id}/msf-sessions", handleListMsfSessions(db))
 		r.Post("/sessions/{id}/loot", handleSaveLoot(db))
@@ -708,6 +710,64 @@ func handleCVEAnalysis(db *DB) http.HandlerFunc {
 
 		data, _ := encodeJSON(results)
 		fmt.Fprintf(w, `{"cves":%s,"target":%q}`, data, target)
+	}
+}
+
+func handleGetEnumResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		if _, err := validateToken(extractToken(r)); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		data, err := db.GetEnumResults(sessionID)
+		if err != nil {
+			fmt.Fprint(w, `{"results":null}`)
+			return
+		}
+		fmt.Fprintf(w, `{"results":%s}`, data)
+	}
+}
+
+func handleSaveEnumResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		claims, err := validateToken(extractToken(r))
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		if _, err := db.GetSession(sessionID, claims.UserID); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"error":"session not found"}`)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"failed to read body"}`)
+			return
+		}
+		if err := db.SaveEnumResults(sessionID, string(body)); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `{"error":"failed to save: %s"}`, err.Error())
+			return
+		}
+		fmt.Fprint(w, `{"ok":true}`)
 	}
 }
 

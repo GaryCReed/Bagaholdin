@@ -61,7 +61,8 @@ type MemoryDB struct {
 	sessions     map[int][]Session
 	projects     map[int]*Project
 	projectHosts map[int][]*ProjectHost // keyed by projectID
-	cveResults   map[int]string         // sessionID → JSON blob
+	cveResults   map[int]string // sessionID → JSON blob
+	enumResults  map[int]string // sessionID → JSON blob
 	mutex        sync.RWMutex
 	nextID       int
 	nextProjID   int
@@ -80,6 +81,7 @@ func NewDB(dbURL string) (*DB, error) {
 				projects:     make(map[int]*Project),
 				projectHosts: make(map[int][]*ProjectHost),
 				cveResults:   make(map[int]string),
+				enumResults:  make(map[int]string),
 				nextID:       1,
 				nextProjID:   1,
 				nextHostID:   1,
@@ -211,6 +213,12 @@ func (db *DB) Migrate() error {
 			data       TEXT NOT NULL,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS enum_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);`
 	} else {
 		schema = `
@@ -272,6 +280,12 @@ func (db *DB) Migrate() error {
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS cve_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS enum_results (
 			session_id INTEGER PRIMARY KEY,
 			data       TEXT NOT NULL,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1089,6 +1103,39 @@ func (db *DB) GetCVEResults(sessionID int) (string, error) {
 	}
 	var data string
 	q := db.rebind(`SELECT data FROM cve_results WHERE session_id = ?`)
+	err := db.conn.QueryRow(q, sessionID).Scan(&data)
+	if err != nil {
+		return "", err
+	}
+	return data, nil
+}
+
+func (db *DB) SaveEnumResults(sessionID int, data string) error {
+	if db.isMemory {
+		db.memory.mutex.Lock()
+		db.memory.enumResults[sessionID] = data
+		db.memory.mutex.Unlock()
+		return nil
+	}
+	q := db.rebind(`INSERT INTO enum_results (session_id, data, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(session_id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`)
+	_, err := db.conn.Exec(q, sessionID, data)
+	return err
+}
+
+func (db *DB) GetEnumResults(sessionID int) (string, error) {
+	if db.isMemory {
+		db.memory.mutex.RLock()
+		data := db.memory.enumResults[sessionID]
+		db.memory.mutex.RUnlock()
+		if data == "" {
+			return "", fmt.Errorf("not found")
+		}
+		return data, nil
+	}
+	var data string
+	q := db.rebind(`SELECT data FROM enum_results WHERE session_id = ?`)
 	err := db.conn.QueryRow(q, sessionID).Scan(&data)
 	if err != nil {
 		return "", err

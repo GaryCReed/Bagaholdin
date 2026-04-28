@@ -3846,14 +3846,34 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         }
       });
 
-    const savedEnum = localStorage.getItem(`session-${sessionId}-enum`);
-    if (savedEnum) {
-      try {
-        const { services, target } = JSON.parse(savedEnum);
-        setEnumResults(services || []);
-        setEnumTarget(target || '');
-      } catch { /* ignore corrupt cache */ }
-    }
+    // Enum results: backend first, fall back to localStorage
+    axios.get(`/api/sessions/${sessionId}/enum-results`)
+      .then(res => {
+        const results = res.data.results;
+        if (results?.services?.length > 0) {
+          setEnumResults(results.services);
+          setEnumTarget(results.target || '');
+          localStorage.setItem(`session-${sessionId}-enum`,
+            JSON.stringify({ services: results.services, target: results.target || '' }));
+        } else {
+          const savedEnum = localStorage.getItem(`session-${sessionId}-enum`);
+          if (savedEnum) {
+            try {
+              const { services, target } = JSON.parse(savedEnum);
+              if (services?.length > 0) { setEnumResults(services); setEnumTarget(target || ''); }
+            } catch { /* ignore */ }
+          }
+        }
+      })
+      .catch(() => {
+        const savedEnum = localStorage.getItem(`session-${sessionId}-enum`);
+        if (savedEnum) {
+          try {
+            const { services, target } = JSON.parse(savedEnum);
+            if (services?.length > 0) { setEnumResults(services); setEnumTarget(target || ''); }
+          } catch { /* ignore */ }
+        }
+      });
 
     const savedOS = localStorage.getItem(`session-${sessionId}-os`);
     if (savedOS) {
@@ -3872,10 +3892,14 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
       localStorage.setItem(`session-${sessionId}-vuln`, vulnOutput);
   }, [vulnOutput, sessionId]);
 
-  // Persist enumeration results
+  // Persist enumeration results to backend + localStorage
   useEffect(() => {
-    if (sessionId && enumResults.length > 0)
-      localStorage.setItem(`session-${sessionId}-enum`, JSON.stringify({ services: enumResults, target: enumTarget }));
+    if (!sessionId || enumResults.length === 0) return;
+    const payload = JSON.stringify({ services: enumResults, target: enumTarget });
+    localStorage.setItem(`session-${sessionId}-enum`, payload);
+    axios.post(`/api/sessions/${sessionId}/enum-results`, payload, {
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {});
   }, [enumResults, enumTarget, sessionId]);
 
   // Persist MSF sessions list
