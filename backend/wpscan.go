@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -82,8 +83,12 @@ func buildWpscanArgs(req WpscanRequest) ([]string, error) {
 	if req.PasswordAttack != "" {
 		args = append(args, "--password-attack", req.PasswordAttack)
 	}
-	if req.ApiToken != "" {
-		args = append(args, "--api-token", req.ApiToken)
+	apiToken := req.ApiToken
+	if apiToken == "" {
+		apiToken = os.Getenv("WPSCAN_API_TOKEN")
+	}
+	if apiToken != "" {
+		args = append(args, "--api-token", apiToken)
 	}
 	if req.Stealthy {
 		args = append(args, "--stealthy")
