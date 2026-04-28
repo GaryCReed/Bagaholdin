@@ -144,6 +144,7 @@ func main() {
 		r.Post("/sessions/{id}/kerbrute", handleRunKerbrute(db))
 		r.Post("/sessions/{id}/enum4linux", handleEnum4Linux(db))
 		registerCMERoutes(r, db)
+		registerNmapRoutes(r, db)
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))

@@ -92,8 +92,9 @@ const ACTIONS: ActionItem[] = [
   { id: 15, label: '15. SqlMap' },
   { id: 16, label: '16. FeroxBuster' },
   { id: 17, label: '17. WPScan' },
+  { id: 18, label: '18. Nmap' },
   { type: 'divider', label: 'Tools' },
-  { id: 18, label: '18. Reset WiFi Adapters' },
+  { id: 19, label: '19. Reset WiFi Adapters' },
 ];
 
 // ── Quick command buttons ──
@@ -1168,6 +1169,193 @@ interface UploadedCap {
   networks: number;
   uploaded_at: string;
   error?: string;
+}
+
+// ── Nmap Panel ───────────────────────────────────────────────────────────────
+
+const NMAP_FLAGS = [
+  { flag: '-sV',   label: 'Version detection (-sV)' },
+  { flag: '-sS',   label: 'SYN scan (-sS, root)' },
+  { flag: '-sU',   label: 'UDP scan (-sU, root)' },
+  { flag: '-O',    label: 'OS detection (-O, root)' },
+  { flag: '-A',    label: 'Aggressive (-A)' },
+  { flag: '-Pn',   label: 'Skip host discovery (-Pn)' },
+  { flag: '--open',label: 'Open ports only (--open)' },
+  { flag: '-T4',   label: 'Faster timing (-T4)' },
+  { flag: '-p-',   label: 'All ports (-p-)' },
+  { flag: '-n',    label: 'No DNS resolution (-n)' },
+  { flag: '-sC',   label: 'Default scripts (-sC)' },
+];
+
+const NMAP_SCRIPT_GROUPS = [
+  {
+    group: 'Brute Force',
+    scripts: [
+      'ftp-brute','http-brute','imap-brute','smtp-brute','pop3-brute',
+      'mysql-brute','mssql-brute','postgres-brute','smb-brute','ssh-brute',
+      'telnet-brute','vnc-brute','snmp-brute','xmpp-brute','rdp-brute',
+    ],
+  },
+  {
+    group: 'SMB',
+    scripts: [
+      'smb-enum-users','smb-enum-shares','smb-os-discovery',
+      'smb-security-mode','smb-vuln-ms17-010','smb-vuln-ms08-067',
+      'smb-vuln-cve-2017-7494','smb2-security-mode',
+    ],
+  },
+  {
+    group: 'Discovery / Auth',
+    scripts: [
+      'ldap-rootdse','snmp-enum','http-auth','http-auth-finder',
+      'http-headers','dns-brute','rdp-enum-encryption','ike-version',
+      'ftp-anon','smtp-enum-users','pop3-capabilities',
+    ],
+  },
+  {
+    group: 'Vulnerability',
+    scripts: [
+      'vuln','vulners','ssl-heartbleed','http-shellshock',
+      'ssl-poodle','ms-sql-empty-password','mysql-empty-password',
+    ],
+  },
+];
+
+function NmapPanel({ sessionId, targetHost }: { sessionId: number; targetHost: string }) {
+  const [selectedFlags,   setSelectedFlags]   = useState<Set<string>>(new Set(['-sV', '-Pn', '--open']));
+  const [selectedScripts, setSelectedScripts] = useState<Set<string>>(new Set());
+  const [ports,           setPorts]           = useState('');
+  const [extraArgs,       setExtraArgs]       = useState('');
+  const [running,         setRunning]         = useState(false);
+  const [output,          setOutput]          = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const toggleFlag = (flag: string) =>
+    setSelectedFlags(prev => { const n = new Set(prev); n.has(flag) ? n.delete(flag) : n.add(flag); return n; });
+
+  const toggleScript = (script: string) =>
+    setSelectedScripts(prev => { const n = new Set(prev); n.has(script) ? n.delete(script) : n.add(script); return n; });
+
+  const poll = () => {
+    axios.get(`/api/sessions/${sessionId}/nmap-scan`)
+      .then(res => {
+        setOutput(res.data.output || '');
+        if (res.data.done) {
+          setRunning(false);
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        }
+      }).catch(() => {});
+  };
+
+  const start = async () => {
+    setRunning(true);
+    setOutput('');
+    try {
+      await axios.post(`/api/sessions/${sessionId}/nmap-scan`, {
+        flags:   [...selectedFlags],
+        scripts: [...selectedScripts],
+        ports:   ports.trim(),
+        extra:   extraArgs.trim(),
+      });
+      pollRef.current = setInterval(poll, 2000);
+    } catch (err: any) {
+      setOutput(err.response?.data?.error || err.message || 'Failed to start scan');
+      setRunning(false);
+    }
+  };
+
+  const stop = async () => {
+    await axios.delete(`/api/sessions/${sessionId}/nmap-scan`).catch(() => {});
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setRunning(false);
+  };
+
+  // Build preview command
+  const preview = (() => {
+    const parts = ['nmap'];
+    selectedFlags.forEach(f => parts.push(f));
+    if (selectedScripts.size > 0) parts.push(`--script=${[...selectedScripts].join(',')}`);
+    if (ports) parts.push(`-p ${ports}`);
+    if (extraArgs) parts.push(extraArgs);
+    parts.push(targetHost || '<target>');
+    return parts.join(' ');
+  })();
+
+  return (
+    <div className="action-panel action-panel-ad">
+      <div className="action-panel-header">
+        <span className="action-panel-title">
+          Nmap
+          {targetHost && <span className="action-panel-target"> — {targetHost}</span>}
+        </span>
+      </div>
+
+      <div className="nmap-body">
+
+        {/* ── Flags ── */}
+        <div className="nmap-section-title">Options</div>
+        <div className="nmap-flags-grid">
+          {NMAP_FLAGS.map(f => (
+            <label key={f.flag} className="nmap-check">
+              <input type="checkbox" checked={selectedFlags.has(f.flag)}
+                onChange={() => toggleFlag(f.flag)} />
+              {f.label}
+            </label>
+          ))}
+        </div>
+
+        {/* ── Ports ── */}
+        <div className="nmap-row">
+          <label className="nmap-label">Ports</label>
+          <input className="nmap-input" value={ports} onChange={e => setPorts(e.target.value)}
+            placeholder="e.g. 22,80,443 or 1-1000 (blank = default)" spellCheck={false} />
+        </div>
+
+        {/* ── Scripts ── */}
+        <div className="nmap-section-title">Scripts</div>
+        <div className="nmap-scripts-wrap">
+          {NMAP_SCRIPT_GROUPS.map(grp => (
+            <div key={grp.group} className="nmap-script-group">
+              <div className="nmap-script-group-label">{grp.group}</div>
+              {grp.scripts.map(s => (
+                <label key={s} className="nmap-check nmap-check-script">
+                  <input type="checkbox" checked={selectedScripts.has(s)}
+                    onChange={() => toggleScript(s)} />
+                  {s}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* ── Extra args ── */}
+        <div className="nmap-row">
+          <label className="nmap-label">Extra args</label>
+          <input className="nmap-input" value={extraArgs} onChange={e => setExtraArgs(e.target.value)}
+            placeholder="e.g. --script-args userdb=/tmp/users.txt" spellCheck={false} />
+        </div>
+
+        {/* ── Command preview ── */}
+        <div className="nmap-preview">{preview}</div>
+
+        {/* ── Controls ── */}
+        <div className="nmap-controls">
+          {running
+            ? <button className="btn-run-scan" onClick={stop}>Stop</button>
+            : <button className="btn-run-scan" onClick={start}>Run Nmap</button>}
+          {running && <span className="nmap-running-hint">Scanning… (updates every 2 s)</span>}
+        </div>
+
+        {/* ── Output ── */}
+        {(output || running) && (
+          <div className="ad-output-wrap">
+            <div className="ad-output-label">{running && !output ? 'Starting…' : 'Output'}</div>
+            <pre className="ad-output">{output || '⌛ Waiting for nmap…'}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Reset WiFi Adapters Panel ─────────────────────────────────────────────────
@@ -4329,7 +4517,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
         </aside>
 
         <main className="sd-main">
-          {activeAction !== 9 && activeAction !== 3 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && activeAction !== 16 && activeAction !== 17 && activeAction !== 18 && (
+          {activeAction !== 9 && activeAction !== 3 && activeAction !== 11 && activeAction !== 12 && activeAction !== 13 && activeAction !== 14 && activeAction !== 15 && activeAction !== 16 && activeAction !== 17 && activeAction !== 18 && activeAction !== 19 && (
           <div className={`sd-console-wrap${consoleCollapsed ? ' sd-panel-collapsed' : ''}`}>
             <div className="sd-console-toggle-bar">
               <span className="sd-console-toggle-label">MSF Console</span>
@@ -5266,8 +5454,13 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             </div>
           )}
 
-          {/* ── Reset WiFi Adapters panel ── */}
+          {/* ── Nmap panel ── */}
           {activeAction === 18 && (
+            <NmapPanel sessionId={sessionId} targetHost={session?.target_host || ''} />
+          )}
+
+          {/* ── Reset WiFi Adapters panel ── */}
+          {activeAction === 19 && (
             <div className="action-panel">
               <div className="action-panel-header">
                 <span className="action-panel-title">Reset WiFi Adapters</span>

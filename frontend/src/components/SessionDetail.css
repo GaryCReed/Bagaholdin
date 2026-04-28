@@ -2331,3 +2331,121 @@
   color: var(--text-dim);
   font-style: italic;
 }
+
+/* ── Nmap panel ──────────────────────────────────────────────────────────── */
+
+.nmap-body {
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nmap-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-top: 4px;
+  border-top: 1px solid var(--border-dim);
+}
+
+.nmap-flags-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 16px;
+}
+
+.nmap-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.nmap-check input { cursor: pointer; accent-color: var(--cyan); }
+
+.nmap-scripts-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.nmap-script-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nmap-script-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 2px;
+}
+
+.nmap-check-script {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.nmap-check-script:hover { color: var(--text-secondary); }
+
+.nmap-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nmap-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.nmap-input {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 5px 9px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.nmap-input:focus { border-color: var(--border-cyan); }
+
+.nmap-preview {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.nmap-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nmap-running-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+}
