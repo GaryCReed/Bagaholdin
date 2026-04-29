@@ -3624,6 +3624,9 @@ export function WpscanPanel({ sessionId }: { sessionId: number }) {
     axios.get('/api/wordlists').then(res => {
       setPassLists(res.data.passwords || []);
     }).catch(() => {});
+    axios.get('/api/config').then(res => {
+      if (res.data.wpscan_api_token) setApiToken(res.data.wpscan_api_token);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {

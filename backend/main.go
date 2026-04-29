@@ -110,6 +110,7 @@ func main() {
 
 		r.Get("/health", handleHealth)
 		r.Get("/network", handleNetwork)
+		r.Get("/config", handleConfig)
 
 		// Projects
 		r.Get("/projects", handleGetProjects(db))
@@ -232,6 +233,13 @@ func main() {
 		_ = cmd.Start()
 	}()
 	log.Fatal(http.ListenAndServe(port, router))
+}
+
+func handleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	token := os.Getenv("WPSCAN_API_TOKEN")
+	tokenJSON, _ := encodeJSON(token)
+	fmt.Fprintf(w, `{"wpscan_api_token":%s}`, tokenJSON)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
