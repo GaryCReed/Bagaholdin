@@ -61,6 +61,7 @@ type MemoryDB struct {
 	sessions     map[int][]Session
 	projects     map[int]*Project
 	projectHosts map[int][]*ProjectHost // keyed by projectID
+	vulnResults  map[int]string // sessionID → JSON blob
 	cveResults   map[int]string // sessionID → JSON blob
 	enumResults  map[int]string // sessionID → JSON blob
 	mutex        sync.RWMutex
@@ -80,6 +81,7 @@ func NewDB(dbURL string) (*DB, error) {
 				sessions:     make(map[int][]Session),
 				projects:     make(map[int]*Project),
 				projectHosts: make(map[int][]*ProjectHost),
+				vulnResults:  make(map[int]string),
 				cveResults:   make(map[int]string),
 				enumResults:  make(map[int]string),
 				nextID:       1,
@@ -208,6 +210,12 @@ func (db *DB) Migrate() error {
 			completed_at TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
+		CREATE TABLE IF NOT EXISTS vuln_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
 		CREATE TABLE IF NOT EXISTS cve_results (
 			session_id INTEGER PRIMARY KEY,
 			data       TEXT NOT NULL,
@@ -277,6 +285,12 @@ func (db *DB) Migrate() error {
 			status TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at DATETIME,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS vuln_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS cve_results (
@@ -1076,6 +1090,36 @@ func (m *MemoryDB) UpsertScanResults(projectID int, online []ScanResult) error {
 }
 
 // ── CVE results persistence ───────────────────────────────────────────────────
+
+func (db *DB) SaveVulnResults(sessionID int, data string) error {
+	if db.isMemory {
+		db.memory.mutex.Lock()
+		db.memory.vulnResults[sessionID] = data
+		db.memory.mutex.Unlock()
+		return nil
+	}
+	q := db.rebind(`INSERT INTO vuln_results (session_id, data, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(session_id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`)
+	_, err := db.conn.Exec(q, sessionID, data)
+	return err
+}
+
+func (db *DB) GetVulnResults(sessionID int) (string, error) {
+	if db.isMemory {
+		db.memory.mutex.RLock()
+		data := db.memory.vulnResults[sessionID]
+		db.memory.mutex.RUnlock()
+		if data == "" {
+			return "", fmt.Errorf("not found")
+		}
+		return data, nil
+	}
+	var data string
+	q := db.rebind(`SELECT data FROM vuln_results WHERE session_id = ?`)
+	err := db.conn.QueryRow(q, sessionID).Scan(&data)
+	return data, err
+}
 
 func (db *DB) SaveCVEResults(sessionID int, data string) error {
 	if db.isMemory {

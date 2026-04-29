@@ -583,6 +583,22 @@ func handleVulnScan(db *DB) http.HandlerFunc {
 				return
 			}
 			os.WriteFile(scanOutputPath(targetHost), []byte(output), 0o644)
+
+			// Persist results to DB so they survive server restarts.
+			osInfo := parseNmapOS(xmlPath)
+			osFamily := ""
+			if osInfo != nil {
+				osFamily = strings.ToLower(osInfo.Family)
+			}
+			services, _ := parseNmapServices(xmlPath, osFamily)
+			outputData, _ := encodeJSON(output)
+			osData, _ := encodeJSON(osInfo)
+			servicesData, _ := encodeJSON(services)
+			blob := fmt.Sprintf(`{"output":%s,"services":%s,"os_info":%s}`,
+				outputData, servicesData, osData)
+			if saveErr := db.SaveVulnResults(sessionID, blob); saveErr != nil {
+				log.Printf("vuln results save: %v", saveErr)
+			}
 		}()
 
 		fmt.Fprint(w, `{"status":"started"}`)
@@ -633,10 +649,17 @@ func handleGetVulnScan(db *DB) http.HandlerFunc {
 			return
 		}
 
-		// Return completed results.
-		outputBytes, err := os.ReadFile(scanOutputPath(targetHost))
-		if err != nil {
-			// No output file — no scan has been run yet.
+		// Return completed results — prefer /tmp files, fall back to DB.
+		outputBytes, fileErr := os.ReadFile(scanOutputPath(targetHost))
+		if fileErr != nil {
+			// /tmp file missing — try DB (survives server restarts).
+			if blob, dbErr := db.GetVulnResults(sessionID); dbErr == nil && len(blob) > 2 {
+				// blob = {"output":...,"services":...,"os_info":...}
+				// Strip outer braces and merge into the status envelope.
+				inner := blob[1 : len(blob)-1]
+				fmt.Fprintf(w, `{"status":"done","target":%q,%s}`, targetHost, inner)
+				return
+			}
 			fmt.Fprint(w, `{"status":"none"}`)
 			return
 		}
