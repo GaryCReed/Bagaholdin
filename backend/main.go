@@ -153,6 +153,7 @@ func main() {
 		r.Get("/sessions/{id}/notes", handleGetNotes(db))
 		r.Post("/sessions/{id}/notes", handleSaveNotes(db))
 		r.Get("/sessions/{id}/searchsploit", handleSearchsploit(db))
+		r.Get("/sessions/{id}/searchsploit-results", handleGetSearchsploitResults(db))
 		r.Post("/sessions/{id}/bruteforce", handleStartBruteforce(db))
 		r.Get("/sessions/{id}/bruteforce", handleGetBruteforce(db))
 		r.Delete("/sessions/{id}/bruteforce", handleStopBruteforce(db))
@@ -1521,7 +1522,38 @@ func handleSearchsploit(db *DB) http.HandlerFunc {
 		}
 		queriesData, _ := encodeJSON(ranQueries)
 		hitsData, _ := encodeJSON(hits)
-		fmt.Fprintf(w, `{"results":%s,"queries":%s}`, hitsData, queriesData)
+		blob := fmt.Sprintf(`{"results":%s,"queries":%s}`, hitsData, queriesData)
+
+		// Persist so results survive restarts and don't require re-running searchsploit.
+		if err := db.SaveSearchsploitResults(sessionID, blob); err != nil {
+			log.Printf("searchsploit results save: %v", err)
+		}
+
+		fmt.Fprint(w, blob)
+	}
+}
+
+// handleGetSearchsploitResults returns the last saved searchsploit results without re-running.
+func handleGetSearchsploitResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		if _, err := validateToken(extractToken(r)); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		data, err := db.GetSearchsploitResults(sessionID)
+		if err != nil {
+			fmt.Fprint(w, `{"results":null}`)
+			return
+		}
+		fmt.Fprint(w, data)
 	}
 }
 

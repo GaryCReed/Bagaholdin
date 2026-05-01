@@ -1003,12 +1003,14 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
   const [manualError, setManualError]   = useState('');
   const [manualSearched, setManualSearched] = useState(false);
 
-  // Auto-scan against nmap results on mount.
-  useEffect(() => {
-    if (!sessionId) return;
+  const runScan = (force = false) => {
     setAutoLoading(true);
     setAutoError('');
-    axios.get(`/api/sessions/${sessionId}/searchsploit`, { timeout: 60 * 1000 })
+    if (force) {
+      setAutoResults([]);
+      setAutoQueries([]);
+    }
+    axios.get(`/api/sessions/${sessionId}/searchsploit`, { timeout: 120 * 1000 })
       .then(res => {
         setAutoResults(res.data.results || []);
         setAutoQueries(res.data.queries || []);
@@ -1019,7 +1021,29 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
         setAutoRan(true);
       })
       .finally(() => setAutoLoading(false));
-  }, [sessionId]);
+  };
+
+  // On mount: load persisted results first; only run a live scan if nothing stored.
+  useEffect(() => {
+    if (!sessionId) return;
+    setAutoLoading(true);
+    axios.get(`/api/sessions/${sessionId}/searchsploit-results`, { timeout: 10 * 1000 })
+      .then(res => {
+        if (res.data.results && res.data.results.length > 0) {
+          setAutoResults(res.data.results);
+          setAutoQueries(res.data.queries || []);
+          setAutoRan(true);
+          setAutoLoading(false);
+        } else {
+          // No stored results — run live scan now.
+          runScan();
+        }
+      })
+      .catch(() => {
+        // Could not reach stored-results endpoint — fall through to live scan.
+        runScan();
+      });
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runManual = async () => {
     const q = manualQuery.trim();
@@ -1098,13 +1122,7 @@ function SearchsploitPanel({ sessionId, targetHost }: { sessionId: number; targe
           Searchsploit
           {targetHost && <span className="action-panel-target"> — {targetHost}</span>}
         </span>
-        <button className="btn-run-scan" onClick={() => {
-          setAutoLoading(true); setAutoError(''); setAutoRan(false);
-          axios.get(`/api/sessions/${sessionId}/searchsploit`, { timeout: 60 * 1000 })
-            .then(res => { setAutoResults(res.data.results || []); setAutoQueries(res.data.queries || []); setAutoRan(true); })
-            .catch(err => { setAutoError(err.response?.data?.error || err.message); setAutoRan(true); })
-            .finally(() => setAutoLoading(false));
-        }} disabled={autoLoading}>
+        <button className="btn-run-scan" onClick={() => runScan(true)} disabled={autoLoading}>
           {autoLoading ? <><span className="btn-spinner" /> Scanning…</> : 'Re-scan'}
         </button>
       </div>
