@@ -64,6 +64,7 @@ type MemoryDB struct {
 	vulnResults  map[int]string // sessionID → JSON blob
 	cveResults   map[int]string // sessionID → JSON blob
 	enumResults  map[int]string // sessionID → JSON blob
+	lootData     map[int][]byte // sessionID → XML bytes
 	mutex        sync.RWMutex
 	nextID       int
 	nextProjID   int
@@ -84,6 +85,7 @@ func NewDB(dbURL string) (*DB, error) {
 				vulnResults:  make(map[int]string),
 				cveResults:   make(map[int]string),
 				enumResults:  make(map[int]string),
+				lootData:     make(map[int][]byte),
 				nextID:       1,
 				nextProjID:   1,
 				nextHostID:   1,
@@ -227,6 +229,12 @@ func (db *DB) Migrate() error {
 			data       TEXT NOT NULL,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS loot_data (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);`
 	} else {
 		schema = `
@@ -300,6 +308,12 @@ func (db *DB) Migrate() error {
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS enum_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS loot_data (
 			session_id INTEGER PRIMARY KEY,
 			data       TEXT NOT NULL,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1185,4 +1199,39 @@ func (db *DB) GetEnumResults(sessionID int) (string, error) {
 		return "", err
 	}
 	return data, nil
+}
+
+// ── Loot XML persistence ──────────────────────────────────────────────────────
+
+func (db *DB) SaveLootData(sessionID int, data []byte) error {
+	if db.isMemory {
+		db.memory.mutex.Lock()
+		db.memory.lootData[sessionID] = data
+		db.memory.mutex.Unlock()
+		return nil
+	}
+	q := db.rebind(`INSERT INTO loot_data (session_id, data, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(session_id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`)
+	_, err := db.conn.Exec(q, sessionID, string(data))
+	return err
+}
+
+func (db *DB) GetLootData(sessionID int) ([]byte, error) {
+	if db.isMemory {
+		db.memory.mutex.RLock()
+		data := db.memory.lootData[sessionID]
+		db.memory.mutex.RUnlock()
+		if data == nil {
+			return nil, fmt.Errorf("not found")
+		}
+		return data, nil
+	}
+	var data string
+	q := db.rebind(`SELECT data FROM loot_data WHERE session_id = ?`)
+	err := db.conn.QueryRow(q, sessionID).Scan(&data)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(data), nil
 }

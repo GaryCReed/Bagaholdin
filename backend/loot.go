@@ -14,6 +14,9 @@ import (
 // from overwriting each other (e.g. multiple hydra creds found simultaneously).
 var lootMu sync.Mutex
 
+// lootDB is set at startup so saveLootDocument can persist to the database.
+var lootDB *DB
+
 // ── XML / JSON structures ────────────────────────────────────────────────────
 
 type LootField struct {
@@ -45,7 +48,14 @@ func lootXMLPath(sessionID int) string {
 
 func loadLootDocument(sessionID int) *LootDocument {
 	data, err := os.ReadFile(lootXMLPath(sessionID))
-	if err != nil {
+	if err != nil && lootDB != nil {
+		// /tmp file missing — try DB fallback
+		if dbData, dbErr := lootDB.GetLootData(sessionID); dbErr == nil && len(dbData) > 0 {
+			data = dbData
+			err = nil
+		}
+	}
+	if err != nil || len(data) == 0 {
 		return nil
 	}
 	var doc LootDocument
@@ -60,8 +70,11 @@ func saveLootDocument(doc *LootDocument) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(lootXMLPath(doc.SessionID),
-		append([]byte(xml.Header), data...), 0644)
+	xmlBytes := append([]byte(xml.Header), data...)
+	if lootDB != nil {
+		lootDB.SaveLootData(doc.SessionID, xmlBytes) //nolint:errcheck
+	}
+	return os.WriteFile(lootXMLPath(doc.SessionID), xmlBytes, 0644)
 }
 
 // appendCredential is the shared implementation for credential loot entries.

@@ -89,6 +89,10 @@ func main() {
 		log.Println("Database connected and migrated successfully")
 	}
 
+	// Give the loot subsystem a DB reference so every saveLootDocument call
+	// also persists to the database (survives /tmp clears and server restarts).
+	lootDB = db
+
 	// Initialize router
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
