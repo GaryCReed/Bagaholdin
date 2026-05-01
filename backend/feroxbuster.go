@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -383,7 +384,23 @@ func parseFeroxLine(line string) *FeroxResult {
 
 // ── Runner ────────────────────────────────────────────────────────────────────
 
-func runFerox(job *FeroxJob, args []string) {
+func saveFeroxToDB(db *DB, sessionID int, job *FeroxJob) {
+	job.mu.Lock()
+	found := make([]FeroxResult, len(job.found))
+	copy(found, job.found)
+	output := make([]string, len(job.output))
+	copy(output, job.output)
+	job.mu.Unlock()
+
+	foundData, _ := encodeJSON(found)
+	outputData, _ := encodeJSON(output)
+	blob := fmt.Sprintf(`{"found":%s,"output":%s}`, foundData, outputData)
+	if err := db.SaveFeroxResults(sessionID, blob); err != nil {
+		log.Printf("ferox results save: %v", err)
+	}
+}
+
+func runFerox(job *FeroxJob, args []string, sessionID int, db *DB) {
 	cmd := exec.Command("feroxbuster", args...)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -420,6 +437,9 @@ func runFerox(job *FeroxJob, args []string) {
 	job.mu.Lock()
 	job.done = true
 	job.mu.Unlock()
+
+	// Persist results so they survive restarts and tab navigation.
+	saveFeroxToDB(db, sessionID, job)
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
@@ -486,9 +506,12 @@ func handleStartFerox(db *DB) http.HandlerFunc {
 			return
 		}
 
+		// Clear previous results — a fresh scan replaces the old ones.
+		db.DeleteFeroxResults(sessionID) //nolint:errcheck
+
 		job := &FeroxJob{}
 		feroxJobs.Store(sessionID, job)
-		go runFerox(job, args)
+		go runFerox(job, args, sessionID, db)
 
 		fmt.Fprint(w, `{"status":"started"}`)
 	}
@@ -561,6 +584,33 @@ func handleStopFerox(db *DB) http.HandlerFunc {
 		if cmd != nil && cmd.Process != nil {
 			cmd.Process.Kill()
 		}
+		// Persist whatever was found before the kill.
+		saveFeroxToDB(db, sessionID, job)
 		fmt.Fprint(w, `{"status":"stopped"}`)
+	}
+}
+
+// handleGetFeroxResults returns the last persisted scan results without
+// requiring an active job — used to restore results on panel mount.
+func handleGetFeroxResults(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessionID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid session id"}`)
+			return
+		}
+		if _, err := validateToken(extractToken(r)); err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"Invalid token"}`)
+			return
+		}
+		data, err := db.GetFeroxResults(sessionID)
+		if err != nil {
+			fmt.Fprint(w, `{"found":null,"output":null}`)
+			return
+		}
+		fmt.Fprint(w, data)
 	}
 }

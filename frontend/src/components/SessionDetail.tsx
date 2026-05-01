@@ -2428,7 +2428,7 @@ export function FeroxPanel({ sessionId }: { sessionId: number }) {
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
-  // Load wordlists + pre-fill URL
+  // Load wordlists, pre-fill URL, and restore any persisted results.
   useEffect(() => {
     axios.get('/api/ferox/wordlists').then(r => {
       const wls: FeroxWordlist[] = r.data?.wordlists ?? [];
@@ -2439,6 +2439,15 @@ export function FeroxPanel({ sessionId }: { sessionId: number }) {
     axios.get(`/api/sessions/${sessionId}`).then(r => {
       const host = r.data?.target_host;
       if (host) setUrl(`http://${host}/`);
+    }).catch(() => {});
+
+    // Restore results from the last completed scan.
+    axios.get(`/api/sessions/${sessionId}/ferox-results`).then(r => {
+      if (r.data.found && r.data.found.length > 0) {
+        setFound(r.data.found);
+        setOutput(r.data.output ?? []);
+        setJobDone(true);
+      }
     }).catch(() => {});
   }, [sessionId]);
 
@@ -2471,6 +2480,7 @@ export function FeroxPanel({ sessionId }: { sessionId: number }) {
   useEffect(() => () => stopPolling(), []);
 
   const handleStart = async () => {
+    // Clear previous results immediately — backend will also clear the DB copy.
     setRunning(true); setJobDone(false); setJobError(''); setOutput([]); setFound([]);
     try {
       await axios.post(`/api/sessions/${sessionId}/ferox`, {

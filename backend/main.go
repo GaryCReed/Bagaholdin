@@ -172,6 +172,7 @@ func main() {
 		r.Post("/sessions/{id}/ferox", handleStartFerox(db))
 		r.Get("/sessions/{id}/ferox", handleGetFerox(db))
 		r.Delete("/sessions/{id}/ferox", handleStopFerox(db))
+		r.Get("/sessions/{id}/ferox-results", handleGetFeroxResults(db))
 			// WPScan
 			r.Post("/sessions/{id}/wpscan", handleStartWpscan(db))
 			r.Get("/sessions/{id}/wpscan", handleGetWpscan(db))

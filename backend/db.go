@@ -66,6 +66,7 @@ type MemoryDB struct {
 	enumResults  map[int]string // sessionID → JSON blob
 	lootData            map[int][]byte // sessionID → XML bytes
 	searchsploitResults map[int]string // sessionID → JSON blob
+	feroxResults        map[int]string // sessionID → JSON blob
 	mutex        sync.RWMutex
 	nextID       int
 	nextProjID   int
@@ -88,6 +89,7 @@ func NewDB(dbURL string) (*DB, error) {
 				enumResults:  make(map[int]string),
 				lootData:            make(map[int][]byte),
 				searchsploitResults: make(map[int]string),
+				feroxResults:        make(map[int]string),
 				nextID:       1,
 				nextProjID:   1,
 				nextHostID:   1,
@@ -243,6 +245,12 @@ func (db *DB) Migrate() error {
 			data       TEXT NOT NULL,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS ferox_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);`
 	} else {
 		schema = `
@@ -328,6 +336,12 @@ func (db *DB) Migrate() error {
 			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS searchsploit_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS ferox_results (
 			session_id INTEGER PRIMARY KEY,
 			data       TEXT NOT NULL,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1280,4 +1294,47 @@ func (db *DB) GetSearchsploitResults(sessionID int) (string, error) {
 	q := db.rebind(`SELECT data FROM searchsploit_results WHERE session_id = ?`)
 	err := db.conn.QueryRow(q, sessionID).Scan(&data)
 	return data, err
+}
+
+// ── Feroxbuster results persistence ──────────────────────────────────────────
+
+func (db *DB) SaveFeroxResults(sessionID int, data string) error {
+	if db.isMemory {
+		db.memory.mutex.Lock()
+		db.memory.feroxResults[sessionID] = data
+		db.memory.mutex.Unlock()
+		return nil
+	}
+	q := db.rebind(`INSERT INTO ferox_results (session_id, data, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(session_id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP`)
+	_, err := db.conn.Exec(q, sessionID, data)
+	return err
+}
+
+func (db *DB) GetFeroxResults(sessionID int) (string, error) {
+	if db.isMemory {
+		db.memory.mutex.RLock()
+		data := db.memory.feroxResults[sessionID]
+		db.memory.mutex.RUnlock()
+		if data == "" {
+			return "", fmt.Errorf("not found")
+		}
+		return data, nil
+	}
+	var data string
+	q := db.rebind(`SELECT data FROM ferox_results WHERE session_id = ?`)
+	err := db.conn.QueryRow(q, sessionID).Scan(&data)
+	return data, err
+}
+
+func (db *DB) DeleteFeroxResults(sessionID int) error {
+	if db.isMemory {
+		db.memory.mutex.Lock()
+		delete(db.memory.feroxResults, sessionID)
+		db.memory.mutex.Unlock()
+		return nil
+	}
+	_, err := db.conn.Exec(db.rebind(`DELETE FROM ferox_results WHERE session_id = ?`), sessionID)
+	return err
 }
