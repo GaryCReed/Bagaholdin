@@ -95,13 +95,19 @@ func getLocalIPs() map[string]bool {
 	return ips
 }
 
-// scanNetwork runs an nmap host-discovery sweep against the given CIDR and returns live hosts,
-// excluding the attacker's own IP addresses.
-// -PE/-PP: ICMP echo and timestamp probes.
-// -PS/-PA: TCP SYN and ACK probes to common ports, catching hosts that block ICMP but have
-//          open or filtered ports.
-// gatewayFromCIDR derives the x.x.x.1 address from a CIDR range.
-func gatewayFromCIDR(cidr string) string {
+// systemGateway returns the default gateway IP from the kernel routing table.
+// Falls back to deriving x.x.x.1 from the given CIDR when the routing table
+// cannot be read (e.g. ip(8) not installed).
+func systemGateway(cidr string) string {
+	// Try the routing table first — gives the real gateway, not a guess.
+	out, err := exec.Command("ip", "route", "show", "default").Output()
+	if err == nil {
+		re := regexp.MustCompile(`default via (\d+\.\d+\.\d+\.\d+)`)
+		if m := re.FindSubmatch(out); m != nil {
+			return string(m[1])
+		}
+	}
+	// Fallback: derive x.x.x.1 from the CIDR.
 	base := strings.SplitN(cidr, "/", 2)[0]
 	octets := strings.Split(base, ".")
 	if len(octets) == 4 {
@@ -154,31 +160,31 @@ func scanNetwork(cidr string) ([]ScanResult, error) {
 	localIPs := getLocalIPs()
 	results := parseNmapHosts(out, localIPs)
 
-	// Routers (x.x.x.1) often filter ICMP and generic ports — probe explicitly.
-	gw := gatewayFromCIDR(cidr)
+	// Always ensure the gateway appears — routers commonly filter every probe
+	// type that nmap uses for host discovery, so a negative result from the
+	// main sweep does not mean the gateway is absent.
+	gw := systemGateway(cidr)
 	if gw != "" && !localIPs[gw] {
-		found := false
+		alreadyFound := false
 		for _, r := range results {
 			if r.IP == gw {
-				found = true
+				alreadyFound = true
 				break
 			}
 		}
-		if !found {
-			// Targeted probe with ports common on routers/APs
-			gwCmd := exec.Command("nmap", "-sn",
-				"-PE", "-PS22,23,80,443,8080,8443,8888",
+		if !alreadyFound {
+			// Quick port-based probe — skips ICMP so router ACLs don't hide it.
+			gwCmd := exec.Command("nmap", "-sn", "-Pn",
+				"-PS22,23,80,443,8080,8443,8888",
 				"-PA80,443",
-				"-T4", gw,
+				"--max-retries", "1", "-T4", gw,
 			)
 			gwOut, _ := gwCmd.Output()
 			gwHosts := parseNmapHosts(gwOut, localIPs)
 			if len(gwHosts) > 0 {
-				// Responded — prepend to keep gateway at the top
 				results = append(gwHosts, results...)
 			} else {
-				// Didn't respond but the gateway must exist — add as online
-				// so users can see and interact with it
+				// Gateway must exist for the network to function — force it in.
 				results = append([]ScanResult{{IP: gw, Hostname: "gateway"}}, results...)
 			}
 		}
