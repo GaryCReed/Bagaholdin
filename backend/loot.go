@@ -126,7 +126,7 @@ func AppendBruteforceCredential(sessionID int, target, username, password, servi
 		if item.Type != "bruteforce_credential" {
 			continue
 		}
-		uMatch, pMatch := false, false
+		uMatch, pMatch, sMatch := false, false, false
 		for _, f := range item.Fields {
 			if f.Name == "username" && f.Value == username {
 				uMatch = true
@@ -134,8 +134,12 @@ func AppendBruteforceCredential(sessionID int, target, username, password, servi
 			if f.Name == "password" && f.Value == password {
 				pMatch = true
 			}
+			if f.Name == "service" && f.Value == service {
+				sMatch = true
+			}
 		}
-		if uMatch && pMatch {
+		// Treat as duplicate only when username, password AND service all match
+		if uMatch && pMatch && sMatch {
 			return nil
 		}
 	}
