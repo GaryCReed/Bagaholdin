@@ -188,6 +188,11 @@ func parseWpscanLine(line string, inUserBlock bool) (*WpscanFinding, bool) {
 		return &WpscanFinding{Type: "interesting", Value: trim}, false
 	}
 
+	// Informational [i] lines (headers, backup files, etc.)
+	if strings.HasPrefix(trim, "[i]") {
+		return &WpscanFinding{Type: "interesting", Value: trim}, false
+	}
+
 	return nil, inUserBlock
 }
 
@@ -211,42 +216,100 @@ func runWpscan(job *WpscanJob, args []string, sessionID int, target string, db *
 		return
 	}
 
-	inUserBlock := false
+	// saveFinding persists a completed finding block and appends it to job.found.
+	saveFinding := func(ftype, value string) {
+		AppendWpscanFinding(sessionID, target, ftype, value)
+		job.mu.Lock()
+		job.found = append(job.found, WpscanFinding{Type: ftype, Value: value})
+		job.mu.Unlock()
+	}
 
-	readStream := func(sc *bufio.Scanner) {
+	// readStdout processes stdout with block-level accumulation.
+	// WPScan groups each finding as a header line ([+]/[!]/[i]) followed by
+	// " | key: value" detail lines.  We collect the whole block so loot
+	// entries contain the full context rather than just the header.
+	readStdout := func(sc *bufio.Scanner) {
+		var (
+			pendingType  string
+			pendingLines []string
+			inUserBlock  bool
+		)
+
+		flushPending := func() {
+			if pendingType == "" {
+				return
+			}
+			saveFinding(pendingType, strings.Join(pendingLines, "\n"))
+			pendingType = ""
+			pendingLines = nil
+		}
+
 		for sc.Scan() {
 			line := sc.Text()
-			var newFinding *WpscanFinding
+			trim := strings.TrimSpace(line)
+
 			job.mu.Lock()
 			job.output = append(job.output, line)
-			if f, nextUserBlock := parseWpscanLine(line, inUserBlock); f != nil {
-				job.found = append(job.found, *f)
-				cp := *f
-				newFinding = &cp
-				inUserBlock = nextUserBlock
-			} else {
-				inUserBlock = nextUserBlock
-			}
 			job.mu.Unlock()
 
-			if newFinding != nil {
-				AppendWpscanFinding(sessionID, target, newFinding.Type, newFinding.Value)
-				if newFinding.Type == "password" {
-					parts := strings.SplitN(newFinding.Value, ":", 2)
+			// Detail line — belongs to the current block.
+			// WPScan uses " | " (with leading space) for detail rows.
+			if pendingType != "" && strings.HasPrefix(trim, "|") {
+				pendingLines = append(pendingLines, line)
+				continue
+			}
+
+			// Any other line ends the current block.
+			flushPending()
+
+			// Parse for a new finding.
+			f, nextUserBlock := parseWpscanLine(line, inUserBlock)
+			inUserBlock = nextUserBlock
+			if f == nil {
+				continue
+			}
+
+			// Passwords and usernames are single-line — save immediately.
+			if f.Type == "password" || f.Type == "user" {
+				saveFinding(f.Type, f.Value)
+				if f.Type == "password" {
+					parts := strings.SplitN(f.Value, ":", 2)
 					if len(parts) == 2 {
 						AppendBruteforceCredential(sessionID, target, parts[0], parts[1], "wp-login")
 						upsertHostBruteforceLoot(db, userID, sessionID, target, "wp-login", parts[0], parts[1])
 					}
 				}
+				continue
 			}
+
+			// Start a new accumulation block for everything else.
+			pendingType = f.Type
+			pendingLines = []string{f.Value}
+		}
+
+		flushPending() // save any block that ends at EOF
+	}
+
+	// readStderr just appends status/progress lines to output — no findings expected there.
+	readStderr := func(sc *bufio.Scanner) {
+		for sc.Scan() {
+			line := sc.Text()
+			job.mu.Lock()
+			job.output = append(job.output, line)
+			job.mu.Unlock()
 		}
 	}
-	go readStream(bufio.NewScanner(stdout))
-	go readStream(bufio.NewScanner(stderr))
 
-	cmd.Wait()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); readStdout(bufio.NewScanner(stdout)) }()
+	go func() { defer wg.Done(); readStderr(bufio.NewScanner(stderr)) }()
 
-	// Snapshot findings before marking done
+	// Wait for both readers to finish, then clean up the process.
+	wg.Wait()
+	cmd.Wait() //nolint:errcheck
+
+	// Snapshot findings and mark done.
 	job.mu.Lock()
 	allFindings := make([]WpscanFinding, len(job.found))
 	copy(allFindings, job.found)
