@@ -3637,7 +3637,9 @@ export function WpscanPanel({ sessionId }: { sessionId: number }) {
   const [httpAuth, setHttpAuth] = useState('');
   const [customArgs, setCustomArgs] = useState('');
 
+  const [userLists, setUserLists] = useState<WordlistEntry[]>([]);
   const [passLists, setPassLists] = useState<WordlistEntry[]>([]);
+  const [customUser, setCustomUser] = useState('');
 
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState<string[]>([]);
@@ -3650,6 +3652,7 @@ export function WpscanPanel({ sessionId }: { sessionId: number }) {
 
   useEffect(() => {
     axios.get('/api/wordlists').then(res => {
+      setUserLists(res.data.users || []);
       setPassLists(res.data.passwords || []);
     }).catch(() => {});
     axios.get('/api/config').then(res => {
@@ -3708,9 +3711,10 @@ export function WpscanPanel({ sessionId }: { sessionId: number }) {
     if (!url) { setJobError('Target URL required'); return; }
     setRunning(true); setJobDone(false); setJobError(''); setOutput([]); setFound([]);
     const passFile = customPass || passwords;
+    const userFile = customUser || usernames;
     try {
       await axios.post(`/api/sessions/${sessionId}/wpscan`, {
-        url, enumerate, usernames,
+        url, enumerate, usernames: userFile,
         passwords: passFile,
         password_attack: passwordAttack,
         api_token: apiToken,
@@ -3785,9 +3789,16 @@ export function WpscanPanel({ sessionId }: { sessionId: number }) {
       <div className="sm-section">
         <div className="sm-section-title">Password Attack</div>
         <div className="sm-row">
-          <span className="sm-label">Usernames (-U)</span>
-          <input className="sm-text-input" value={usernames} onChange={e => setUsernames(e.target.value)}
-            placeholder="admin (CSV or file path — blank = auto-enumerate)" />
+          <span className="sm-label">Username list (-U)</span>
+          <select className="sm-select" value={usernames} onChange={e => setUsernames(e.target.value)} style={{flex:1}}>
+            <option value="">— none / auto-enumerate —</option>
+            {groupedOptions(userLists)}
+          </select>
+        </div>
+        <div className="sm-row">
+          <span className="sm-label">Custom list path</span>
+          <input className="sm-text-input" value={customUser} onChange={e => setCustomUser(e.target.value)}
+            placeholder="/path/to/usernames.txt (overrides dropdown)" />
         </div>
         <div className="sm-row">
           <span className="sm-label">Password list (-P)</span>
