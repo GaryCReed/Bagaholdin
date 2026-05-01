@@ -3904,6 +3904,8 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
   const [cveError, setCveError]       = useState('');
   const [cveTarget, setCveTarget]     = useState('');
   const [cveAnalysed, setCveAnalysed] = useState(false);
+  // True once the initial load from backend/localStorage has completed
+  const [cveResultsLoaded, setCveResultsLoaded] = useState(false);
   const [copied, setCopied]           = useState<string | null>(null);
   const cveRunIdRef = useRef(0);
 
@@ -4021,6 +4023,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             } catch {}
           }
         }
+        setCveResultsLoaded(true);
       })
       .catch(() => {
         // Backend unavailable — use localStorage
@@ -4035,6 +4038,7 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
             }
           } catch {}
         }
+        setCveResultsLoaded(true);
       });
 
     // Enum results: backend first, fall back to localStorage
@@ -4129,11 +4133,13 @@ export default function SessionDetail({ onLogout }: SessionDetailProps) {
       vulnOutputRef.current.scrollTop = vulnOutputRef.current.scrollHeight;
   }, [vulnOutput]);
 
-  // Auto-run CVE analysis when first opening the CVE panel if scan data exists but analysis not yet done
+  // Auto-run CVE analysis when first opening the CVE panel if scan data exists but analysis not yet done.
+  // cveResultsLoaded guards against firing before the initial DB/localStorage fetch completes,
+  // which would trigger a redundant re-analysis while stored results are still in-flight.
   useEffect(() => {
-    if (activeAction === 3 && !cveAnalysed && !cveLoading && cveResults.length === 0 && vulnOutput)
+    if (activeAction === 3 && cveResultsLoaded && !cveAnalysed && !cveLoading && cveResults.length === 0 && vulnOutput)
       handleCVEAnalysis();
-  }, [activeAction]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAction, cveResultsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Always refresh MSF sessions when opening the Shells tab
   useEffect(() => {

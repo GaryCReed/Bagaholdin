@@ -715,6 +715,11 @@ func handleCVEAnalysis(db *DB) http.HandlerFunc {
 		target := session.TargetHost
 		cves, err := parseNmapXML(scanXMLPath(target))
 		if err != nil {
+			// XML missing — return the CVE results that were stored after the last analysis.
+			if stored, dbErr := db.GetCVEResults(sessionID); dbErr == nil && stored != "" {
+				fmt.Fprintf(w, `{"cves":%s,"target":%q}`, stored, target)
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
 			return
@@ -1423,6 +1428,18 @@ func handleSearchsploit(db *DB) http.HandlerFunc {
 
 		services, err := parseNmapServices(scanXMLPath(session.TargetHost), "")
 		if err != nil {
+			// XML missing — try DB-persisted services from the last vuln scan.
+			if blob, dbErr := db.GetVulnResults(sessionID); dbErr == nil && blob != "" {
+				var stored struct {
+					Services []ServiceEnumResult `json:"services"`
+				}
+				if decodeJSON(blob, &stored) == nil && len(stored.Services) > 0 {
+					services = stored.Services
+					err = nil
+				}
+			}
+		}
+		if err != nil || len(services) == 0 {
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"error":"No scan results found — run Vulnerability Scan first"}`)
 			return

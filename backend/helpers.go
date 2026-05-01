@@ -19,3 +19,7 @@ func encodeJSON(v interface{}) (string, error) {
 	data, err := json.Marshal(v)
 	return string(data), err
 }
+
+func decodeJSON(data string, v interface{}) error {
+	return json.Unmarshal([]byte(data), v)
+}
