@@ -95,19 +95,47 @@ func getLocalIPs() map[string]bool {
 	return ips
 }
 
-// systemGateway returns the default gateway IP from the kernel routing table.
-// Falls back to deriving x.x.x.1 from the given CIDR when the routing table
-// cannot be read (e.g. ip(8) not installed).
+// systemGateway returns the gateway IP for the network being scanned.
+// On multi-homed machines (physical NIC + Docker + VPN) the default route
+// belongs to a different subnet, so we only accept a routing-table result
+// when the gateway IP actually falls inside the CIDR we are scanning.
 func systemGateway(cidr string) string {
-	// Try the routing table first — gives the real gateway, not a guess.
-	out, err := exec.Command("ip", "route", "show", "default").Output()
-	if err == nil {
-		re := regexp.MustCompile(`default via (\d+\.\d+\.\d+\.\d+)`)
-		if m := re.FindSubmatch(out); m != nil {
-			return string(m[1])
+	_, network, _ := net.ParseCIDR(cidr)
+
+	// Returns true when gw is a valid IPv4 address inside our target subnet.
+	inSubnet := func(gw string) bool {
+		ip := net.ParseIP(gw)
+		return ip != nil && network != nil && network.Contains(ip)
+	}
+
+	reVia := regexp.MustCompile(`via (\d+\.\d+\.\d+\.\d+)`)
+
+	// 1. Ask the kernel for the specific route to this network.
+	//    e.g. "ip route show 172.19.0.0/16" — matches the exact interface route.
+	if network != nil {
+		if out, err := exec.Command("ip", "route", "show", network.String()).Output(); err == nil {
+			if m := reVia.FindSubmatch(out); m != nil {
+				if gw := string(m[1]); inSubnet(gw) {
+					return gw
+				}
+			}
 		}
 	}
-	// Fallback: derive x.x.x.1 from the CIDR.
+
+	// 2. Default route — only use it when the gateway is inside our subnet.
+	//    Ignored on multi-homed machines where the default points elsewhere.
+	if out, err := exec.Command("ip", "route", "show", "default").Output(); err == nil {
+		re := regexp.MustCompile(`default via (\d+\.\d+\.\d+\.\d+)`)
+		if m := re.FindSubmatch(out); m != nil {
+			if gw := string(m[1]); inSubnet(gw) {
+				return gw
+			}
+		}
+	}
+
+	// 3. Fallback: derive x.x.x.1 from the host IP in the CIDR.
+	//    Works for Docker bridges, VLANs, and any network where the gateway
+	//    is conventionally the first host address.
 	base := strings.SplitN(cidr, "/", 2)[0]
 	octets := strings.Split(base, ".")
 	if len(octets) == 4 {
