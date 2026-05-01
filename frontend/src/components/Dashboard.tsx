@@ -116,7 +116,9 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
     try {
       await axios.delete(`/api/sessions/${id}`);
       clearSessionLocalStorage(id);
-      loadSessions();
+      // Optimistically remove before awaiting refresh so the button re-enables immediately
+      setSessions(prev => prev.filter(s => s.id !== id));
+      await loadSessions();
     } catch {
       // silently ignore
     }
@@ -147,7 +149,7 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
         session_name: name,
         target_host: host.ip,
       });
-      loadSessions();
+      await loadSessions();
     } catch {
       // silently ignore
     } finally {
@@ -190,7 +192,7 @@ export default function Dashboard({ onLogout, project }: DashboardProps) {
     );
     setSelectedHosts(new Set());
     setAddingMultiple(false);
-    loadSessions();
+    await loadSessions();
   };
 
   // Use project's network_range if set, otherwise fall back to the first detected local network
