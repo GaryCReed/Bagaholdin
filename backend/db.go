@@ -362,6 +362,32 @@ func (db *DB) Migrate() error {
 		db.conn.Exec(`ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL`)
 	}
 
+	// Ensure tables added after initial release exist in older databases.
+	// These are idempotent — CREATE TABLE IF NOT EXISTS is safe to run repeatedly.
+	newTables := []string{
+		`CREATE TABLE IF NOT EXISTS loot_data (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS searchsploit_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS ferox_results (
+			session_id INTEGER PRIMARY KEY,
+			data       TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+	}
+	for _, t := range newTables {
+		db.conn.Exec(t) //nolint:errcheck — IF NOT EXISTS means this is safe to ignore
+	}
+
 	return nil
 }
 

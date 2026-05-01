@@ -401,6 +401,9 @@ func saveFeroxToDB(db *DB, sessionID int, job *FeroxJob) {
 }
 
 func runFerox(job *FeroxJob, args []string, sessionID int, db *DB) {
+	// Output file written by feroxbuster — same path as handleStartFerox.
+	outputFile := fmt.Sprintf("/tmp/ferox-%d/results.txt", sessionID)
+
 	cmd := exec.Command("feroxbuster", args...)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -429,16 +432,37 @@ func runFerox(job *FeroxJob, args []string, sessionID int, db *DB) {
 			job.mu.Unlock()
 		}
 	}
-	go readStream(bufio.NewScanner(stdout))
-	go readStream(bufio.NewScanner(stderr))
 
-	cmd.Wait()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); readStream(bufio.NewScanner(stdout)) }()
+	go func() { defer wg.Done(); readStream(bufio.NewScanner(stderr)) }()
+
+	cmd.Wait() // closes pipes once the process exits
+	wg.Wait()  // drain any remaining buffered lines before reading job.found
+
+	// The output file is the authoritative source: feroxbuster flushes it
+	// completely before exiting, so it captures results the pipe may have
+	// missed (e.g. the last batch before EOF).
+	if raw, err := os.ReadFile(outputFile); err == nil {
+		seen := map[string]bool{}
+		job.mu.Lock()
+		for _, r := range job.found {
+			seen[r.URL] = true
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if r := parseFeroxLine(line); r != nil && !seen[r.URL] {
+				job.found = append(job.found, *r)
+				seen[r.URL] = true
+			}
+		}
+		job.mu.Unlock()
+	}
 
 	job.mu.Lock()
 	job.done = true
 	job.mu.Unlock()
 
-	// Persist results so they survive restarts and tab navigation.
 	saveFeroxToDB(db, sessionID, job)
 }
 
