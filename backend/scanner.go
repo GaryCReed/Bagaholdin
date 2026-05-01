@@ -188,11 +188,12 @@ func scanNetwork(cidr string) ([]ScanResult, error) {
 	localIPs := getLocalIPs()
 	results := parseNmapHosts(out, localIPs)
 
-	// Always ensure the gateway appears — routers commonly filter every probe
-	// type that nmap uses for host discovery, so a negative result from the
-	// main sweep does not mean the gateway is absent.
+	// Always ensure the gateway/first-host appears in results.
+	// The !localIPs[gw] guard is intentionally absent: on Docker-host setups
+	// the bridge IP (e.g. 172.19.0.1) is a local interface but is also a
+	// valid scan target running services.  We want it visible regardless.
 	gw := systemGateway(cidr)
-	if gw != "" && !localIPs[gw] {
+	if gw != "" {
 		alreadyFound := false
 		for _, r := range results {
 			if r.IP == gw {
@@ -201,18 +202,21 @@ func scanNetwork(cidr string) ([]ScanResult, error) {
 			}
 		}
 		if !alreadyFound {
-			// Quick port-based probe — skips ICMP so router ACLs don't hide it.
+			// Use -Pn so nmap reports the host regardless of ICMP filtering.
 			gwCmd := exec.Command("nmap", "-sn", "-Pn",
 				"-PS22,23,80,443,8080,8443,8888",
 				"-PA80,443",
 				"--max-retries", "1", "-T4", gw,
 			)
 			gwOut, _ := gwCmd.Output()
+			// parseNmapHosts filters localIPs, so if gw is local it returns
+			// empty — fall through to the unconditional force-add below.
 			gwHosts := parseNmapHosts(gwOut, localIPs)
 			if len(gwHosts) > 0 {
 				results = append(gwHosts, results...)
 			} else {
-				// Gateway must exist for the network to function — force it in.
+				// Force-add: gateway must exist for the network to function,
+				// even when it is the scanning machine's own bridge/VPN IP.
 				results = append([]ScanResult{{IP: gw, Hostname: "gateway"}}, results...)
 			}
 		}
