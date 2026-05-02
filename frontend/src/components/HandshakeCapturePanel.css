@@ -211,6 +211,23 @@
 .hcp-pwr-med    { color: var(--amber) !important; }
 .hcp-pwr-weak   { color: var(--text-dim) !important; }
 
+/* WPA3-Transition downgrade vulnerability indicators */
+.hcp-wpa3-vuln  { background: rgba(255, 160, 0, 0.06) !important; }
+.hcp-wpa3-vuln:hover { background: rgba(255, 160, 0, 0.12) !important; }
+.hcp-wpa3-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255,160,0,0.18);
+  color: var(--amber);
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+.hcp-auth-vuln { color: var(--amber) !important; font-weight: 600; }
+
 /* ── Capture output ── */
 .hcp-out-wrap { display: flex; flex-direction: column; gap: 6px; }
 

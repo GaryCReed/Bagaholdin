@@ -17,6 +17,16 @@ interface WifiAP {
 
 type SortKey = 'essid' | 'bssid' | 'channel' | 'power' | 'privacy' | 'clients';
 
+// An AP is vulnerable to WPA3-Transition downgrade when it advertises both
+// SAE (WPA3) and PSK (WPA2) — clients may be lured onto a WPA2-only rogue AP.
+function isWPA3Transition(ap: WifiAP): boolean {
+  const auth    = (ap.auth    || '').toUpperCase();
+  const privacy = (ap.privacy || '').toUpperCase();
+  return (auth.includes('SAE') && auth.includes('PSK')) ||
+         (privacy.includes('WPA3') && privacy.includes('WPA2')) ||
+         (privacy.includes('WPA3') && auth.includes('PSK'));
+}
+
 interface HandshakeCapturePanelProps {
   sessionId: number;
 }
@@ -391,14 +401,21 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
                       {k.toUpperCase()}{sortArrow(k)}
                     </th>
                   ))}
+                  <th>AUTH</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedAps.map(ap => (
+                {sortedAps.map(ap => {
+                  const vulnerable = isWPA3Transition(ap);
+                  return (
                   <tr
                     key={ap.bssid}
-                    className={selectedBSSIDs.has(ap.bssid) ? 'hcp-selected' : ''}
+                    className={[
+                      selectedBSSIDs.has(ap.bssid) ? 'hcp-selected' : '',
+                      vulnerable ? 'hcp-wpa3-vuln' : '',
+                    ].filter(Boolean).join(' ')}
                     onClick={() => toggleSelectAP(ap.bssid)}
+                    title={vulnerable ? 'WPA3-Transition Mode — vulnerable to downgrade attack (SAE+PSK, MFP inactive)' : undefined}
                   >
                     <td>
                       <input
@@ -408,7 +425,10 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
                         onClick={e => e.stopPropagation()}
                       />
                     </td>
-                    <td className="hcp-td-essid">{ap.essid || '<hidden>'}</td>
+                    <td className="hcp-td-essid">
+                      {ap.essid || '<hidden>'}
+                      {vulnerable && <span className="hcp-wpa3-badge" title="WPA3-Transition: vulnerable to downgrade">⚠ WPA3-T</span>}
+                    </td>
                     <td className="hcp-td-bssid">{ap.bssid}</td>
                     <td>{ap.channel}</td>
                     <td className={
@@ -419,8 +439,10 @@ export default function HandshakeCapturePanel({ sessionId }: HandshakeCapturePan
                     </td>
                     <td>{ap.privacy}</td>
                     <td>{ap.clients}</td>
+                    <td className={vulnerable ? 'hcp-auth-vuln' : ''}>{ap.auth || '—'}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

